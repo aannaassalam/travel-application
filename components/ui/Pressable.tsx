@@ -1,0 +1,72 @@
+import * as Haptics from "expo-haptics";
+import { useCallback } from "react";
+import { Pressable as RNPressable, type PressableProps, type ViewStyle } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  Easing
+} from "react-native-reanimated";
+import { HIT_SLOP_MIN, motion } from "@/theme/tokens";
+
+const AnimatedPressable = Animated.createAnimatedComponent(RNPressable);
+const EXPO_OUT = Easing.bezier(0.16, 1, 0.3, 1);
+
+/**
+ * A press with weight.
+ *
+ * A touch screen gives no travel and no click, so the scale and the haptic ARE
+ * the feedback — without them people tap twice and order twice. 120ms because a
+ * press is immediate acknowledgement; anything slower reads as lag behind the
+ * finger, which is the same reasoning the website's `.btn` uses.
+ *
+ * `hitSlop` guarantees the 44pt HIG target even where the visual control is
+ * smaller, so a 32pt stepper button is still comfortably tappable.
+ */
+export function Pressable({
+  children,
+  style,
+  scaleTo = 0.97,
+  haptic = "light",
+  disabled,
+  ...props
+}: PressableProps & {
+  style?: ViewStyle | ViewStyle[];
+  scaleTo?: number;
+  haptic?: "light" | "medium" | "selection" | "none";
+}) {
+  const pressed = useSharedValue(0);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 - pressed.value * (1 - scaleTo) }],
+    opacity: disabled ? 0.45 : 1
+  }));
+
+  const onPressIn = useCallback(() => {
+    pressed.value = withTiming(1, { duration: motion.press, easing: EXPO_OUT });
+    if (haptic === "none" || disabled) return;
+    if (haptic === "selection") void Haptics.selectionAsync();
+    else
+      void Haptics.impactAsync(
+        haptic === "medium" ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light
+      );
+  }, [pressed, haptic, disabled]);
+
+  const onPressOut = useCallback(() => {
+    pressed.value = withTiming(0, { duration: motion.press, easing: EXPO_OUT });
+  }, [pressed]);
+
+  return (
+    <AnimatedPressable
+      accessibilityRole="button"
+      hitSlop={HIT_SLOP_MIN / 4}
+      disabled={disabled}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      style={[style, animatedStyle]}
+      {...props}
+    >
+      {children as React.ReactNode}
+    </AnimatedPressable>
+  );
+}
