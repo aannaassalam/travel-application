@@ -1,7 +1,6 @@
-import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
 import { useEffect } from "react";
-import { AccessibilityInfo, Dimensions, StyleSheet, View } from "react-native";
+import { AccessibilityInfo, Dimensions, Image, StyleSheet } from "react-native";
+import BootSplash from "react-native-bootsplash";
 import Animated, {
   Easing,
   interpolate,
@@ -13,6 +12,8 @@ import Animated, {
   withSequence,
   withTiming
 } from "react-native-reanimated";
+import { GradientFill, RadialGlow } from "@/components/ui/Gradient";
+import { markSplashRevealed } from "@/lib/splashState";
 import Svg, { Defs, Path, Stop, LinearGradient as SvgGradient } from "react-native-svg";
 import { color } from "@/theme/tokens";
 
@@ -22,76 +23,98 @@ const AnimatedPath = Animated.createAnimatedComponent(Path);
 /**
  * The splash — the one authored moment in the app.
  *
- * The mark is a road curving away past a skyline with an aircraft leaving it,
- * so the sequence animates the journey the logo already draws rather than
- * inventing a generic fade-and-rise:
+ * It begins exactly where the native launch screen ends: the same flat navy,
+ * the same mark at the same size in the same place. `BootSplash.hide` runs
+ * with no fade on this component's first frame, so the hand-off is a cut
+ * between two identical pictures — invisible. The last version faded a
+ * *different* navy in over the launch screen's, which is where the mismatched
+ * edges came from; this one has a single ground colour and a mark whose alpha
+ * was recovered from the artwork rather than flood-filled out of the app icon.
  *
- *   1. The ground blooms from near-black to navy, so the screen arrives lit
- *      rather than switched on.
- *   2. A road draws across the horizon, left to right, in amber.
- *   3. The mark lands on it — overshooting slightly and settling, the way a
- *      thing with weight does.
- *   4. The wordmark rises out from under the mark.
- *   5. Everything lifts away and the app is already behind it.
+ * Then the picture starts moving — the journey the logo already draws:
  *
- * Every stage is an exponential ease-out from an already-visible default, and
- * the whole thing is under 2 seconds — a splash that outstays that is a tax on
+ *   1. An amber road draws itself across the horizon, behind the mark.
+ *   2. The mark wakes: a small lift with a settle, making room.
+ *   3. The wordmark rises out from under it.
+ *   4. A vignette deepens the ground while a warm glow blooms behind the mark.
+ *   5. The whole plate lifts away; the app is already underneath.
+ *
+ * Every stage is an exponential ease-out from an already-visible state, and
+ * the whole run is under two seconds — a splash that outstays that is a tax on
  * every launch, not a welcome.
  *
- * Reduce Motion collapses the choreography to a single crossfade. The brand
- * still arrives; it just does not travel to get there.
+ * Reduce Motion holds the still lockup briefly and dissolves. The brand still
+ * arrives; it just does not travel to get there.
  */
 
 const EXPO_OUT = Easing.bezier(0.16, 1, 0.3, 1);
 
-/** The horizon the road is drawn along, as a share of the viewport. */
-const ROAD_Y = H * 0.5;
-const ROAD_PATH = `M ${-W * 0.1} ${ROAD_Y} Q ${W * 0.5} ${ROAD_Y - 46} ${W * 1.1} ${ROAD_Y}`;
-// Generous over-estimate of the arc length; the dash only needs to exceed it.
+/** Must match the bootsplash generate flags: logo-width 120, ratio 400:446. */
+const MARK_W = 120;
+const MARK_H = Math.round((MARK_W * 446) / 400);
+/** How far the mark lifts to make room for the wordmark. */
+const LIFT = 34;
+
+// Type only — the full lockup contains its own small copy of the mark, and
+// the splash already has the mark, large, directly above. One brand, once.
+const WORD_W = 168;
+// Ratio of the re-cropped type (675×142) — the old fixed-ratio crop started
+// inside the F and clipped it.
+const WORD_H = Math.round((WORD_W * 142) / 675);
+
+const ROAD_Y = H * 0.5 + MARK_H / 2 - 14;
+const ROAD_PATH = `M ${-W * 0.1} ${ROAD_Y} Q ${W * 0.5} ${ROAD_Y - 42} ${W * 1.1} ${ROAD_Y}`;
 const ROAD_LEN = W * 1.4;
 
 export default function Splash({ onDone }: { onDone: () => void }) {
-  const ground = useSharedValue(0);
   const road = useSharedValue(0);
-  const mark = useSharedValue(0);
+  const lift = useSharedValue(0);
   const word = useSharedValue(0);
+  const glow = useSharedValue(0);
   const exit = useSharedValue(0);
 
   useEffect(() => {
-    let cancelled = false;
+    // First frame is committed by the time this effect runs; hiding the native
+    // splash now swaps between two identical pictures.
+    void BootSplash.hide({ fade: false });
 
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     AccessibilityInfo.isReduceMotionEnabled().then((reduced) => {
       if (cancelled) return;
 
       if (reduced) {
-        // One crossfade, one hold, then out. No travel, no stagger.
-        ground.value = withTiming(1, { duration: 200 });
-        mark.value = withTiming(1, { duration: 260 });
-        word.value = withTiming(1, { duration: 260 });
+        lift.value = 1;
+        word.value = 1;
+        // The reveal signal rides the same clock as the exit's start.
+        timer = setTimeout(markSplashRevealed, 800);
         exit.value = withDelay(
-          760,
-          withTiming(1, { duration: 260 }, (finished) => {
+          800,
+          withTiming(1, { duration: 280 }, (finished) => {
             if (finished) runOnJS(onDone)();
           })
         );
         return;
       }
 
-      ground.value = withTiming(1, { duration: 520, easing: EXPO_OUT });
-      road.value = withDelay(120, withTiming(1, { duration: 700, easing: EXPO_OUT }));
-      // Overshoot then settle: the second leg is shorter, so it reads as weight
-      // coming to rest rather than as a bounce.
-      mark.value = withDelay(
-        360,
+      road.value = withDelay(120, withTiming(1, { duration: 720, easing: EXPO_OUT }));
+      glow.value = withDelay(260, withTiming(1, { duration: 640, easing: EXPO_OUT }));
+      // Overshoot then settle: the second leg is shorter, so it reads as
+      // weight coming to rest rather than a bounce.
+      lift.value = withDelay(
+        320,
         withSequence(
-          withTiming(1.06, { duration: 460, easing: EXPO_OUT }),
-          withTiming(1, { duration: 220, easing: EXPO_OUT })
+          withTiming(1.07, { duration: 440, easing: EXPO_OUT }),
+          withTiming(1, { duration: 200, easing: EXPO_OUT })
         )
       );
-      word.value = withDelay(640, withTiming(1, { duration: 520, easing: EXPO_OUT }));
+      word.value = withDelay(560, withTiming(1, { duration: 520, easing: EXPO_OUT }));
+      // Fire as the plate BEGINS to lift, so the page underneath cascades in
+      // while the splash rises — the hand-off is one continuous motion.
+      timer = setTimeout(markSplashRevealed, 1500);
       exit.value = withDelay(
-        1450,
-        withTiming(1, { duration: 460, easing: EXPO_OUT }, (finished) => {
+        1500,
+        withTiming(1, { duration: 440, easing: EXPO_OUT }, (finished) => {
           if (finished) runOnJS(onDone)();
         })
       );
@@ -99,51 +122,53 @@ export default function Splash({ onDone }: { onDone: () => void }) {
 
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
+      // However this unmounts, the app must never stay gated shut.
+      markSplashRevealed();
     };
-  }, [ground, road, mark, word, exit, onDone]);
+  }, [road, lift, word, glow, exit, onDone]);
 
   const shellStyle = useAnimatedStyle(() => ({
     opacity: 1 - exit.value,
-    // The whole plate lifts on the way out, so the app appears to be underneath
-    // it rather than replacing it.
-    transform: [{ translateY: -exit.value * H * 0.06 }, { scale: 1 + exit.value * 0.04 }]
+    // The plate lifts on the way out, so the app appears to be underneath it
+    // rather than replacing it.
+    transform: [{ translateY: -exit.value * H * 0.05 }, { scale: 1 + exit.value * 0.03 }]
   }));
 
-  const groundStyle = useAnimatedStyle(() => ({ opacity: ground.value }));
-
-  // SVG geometry is not a style: `strokeDashoffset` has to travel as an
-  // animated prop, or Reanimated writes it into a style object react-native-svg
-  // never reads and the line simply appears all at once.
+  // SVG geometry travels as an animated prop — Reanimated writes styles into
+  // an object react-native-svg never reads, and the line would just appear.
   const roadProps = useAnimatedProps(() => ({
     strokeDashoffset: ROAD_LEN * (1 - road.value),
-    opacity: interpolate(road.value, [0, 0.15, 1], [0, 1, 0.55])
+    opacity: interpolate(road.value, [0, 0.15, 1], [0, 1, 0.5])
   }));
 
   const glowStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(mark.value, [0, 1], [0, 0.85]),
-    transform: [{ scale: interpolate(mark.value, [0, 1], [0.4, 1]) }]
+    opacity: glow.value * 0.8,
+    transform: [{ scale: interpolate(glow.value, [0, 1], [0.5, 1]) }]
   }));
 
   const markStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(mark.value, [0, 0.35, 1], [0, 1, 1]),
     transform: [
-      { scale: interpolate(mark.value, [0, 1.06], [0.72, 1.06]) },
-      { translateY: interpolate(mark.value, [0, 1], [26, 0]) }
+      { translateY: interpolate(lift.value, [0, 1.07], [0, -LIFT * 1.07]) },
+      { scale: interpolate(lift.value, [0, 1.07], [1, 1.035]) }
     ]
   }));
 
   const wordStyle = useAnimatedStyle(() => ({
     opacity: word.value,
-    transform: [{ translateY: interpolate(word.value, [0, 1], [18, 0]) }]
+    transform: [{ translateY: interpolate(word.value, [0, 1], [16, 0]) }]
   }));
+
+  const vignetteStyle = useAnimatedStyle(() => ({ opacity: glow.value * 0.55 }));
 
   return (
     <Animated.View style={[StyleSheet.absoluteFill, styles.shell, shellStyle]} pointerEvents="none">
-      <Animated.View style={[StyleSheet.absoluteFill, groundStyle]}>
-        <LinearGradient
-          colors={[color.brand800, color.brand900, "#061726"]}
-          locations={[0, 0.55, 1]}
-          style={StyleSheet.absoluteFill}
+      {/* Ground vignette, arriving with the glow — one light source, not two
+          competing fades. The base stays the launch screen's exact navy. */}
+      <Animated.View style={[StyleSheet.absoluteFill, vignetteStyle]}>
+        <GradientFill
+          colors={["rgba(6,23,38,0)", "rgba(6,23,38,0)", "rgba(6,23,38,0.9)"]}
+          locations={[0, 0.45, 1]}
         />
       </Animated.View>
 
@@ -168,50 +193,47 @@ export default function Splash({ onDone }: { onDone: () => void }) {
         />
       </Svg>
 
-      <View style={styles.centre}>
-        {/* A warm bloom behind the mark, so it sits in light rather than on a
-            flat field. Blur is unavailable to a native shadow at this size, so
-            the softness comes from a radial-ish stack of gradients. */}
-        <Animated.View style={[styles.glow, glowStyle]}>
-          <LinearGradient
-            colors={["rgba(245,166,35,0.32)", "rgba(245,166,35,0.06)", "transparent"]}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
+      {/* Warm bloom behind the mark, so it sits in light on a flat field. */}
+      <Animated.View style={[styles.glow, glowStyle]}>
+        <RadialGlow color="#f5a623" opacity={0.26} />
+      </Animated.View>
 
-        <Animated.View style={markStyle}>
-          <Image
-            source={require("@/assets/images/mark.webp")}
-            style={styles.mark}
-            contentFit="contain"
-            transition={0}
-          />
-        </Animated.View>
+      {/* The mark: pixel-identical to the native launch screen at t=0. */}
+      <Animated.View style={[styles.markWrap, markStyle]}>
+        <Image source={require("@/assets/images/mark.png")} style={styles.mark} resizeMode="contain" />
+      </Animated.View>
 
-        <Animated.View style={[styles.wordWrap, wordStyle]}>
-          <Image
-            source={require("@/assets/images/wordmark.webp")}
-            style={styles.word}
-            contentFit="contain"
-            transition={0}
-          />
-        </Animated.View>
-      </View>
+      <Animated.View style={[styles.wordWrap, wordStyle]}>
+        <Image
+          source={require("@/assets/images/wordmark-type.png")}
+          style={styles.word}
+          resizeMode="contain"
+        />
+      </Animated.View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   shell: { backgroundColor: color.brand900, zIndex: 100 },
-  centre: { flex: 1, alignItems: "center", justifyContent: "center" },
   glow: {
     position: "absolute",
-    width: W * 0.9,
-    height: W * 0.9,
-    borderRadius: W * 0.45,
-    overflow: "hidden"
+    top: H / 2 - W * 0.55,
+    left: W / 2 - W * 0.55,
+    width: W * 1.1,
+    height: W * 1.1
   },
-  mark: { width: 108, height: 120 },
-  wordWrap: { marginTop: 28 },
-  word: { width: 208, height: 44 }
+  markWrap: {
+    position: "absolute",
+    top: H / 2 - MARK_H / 2,
+    left: W / 2 - MARK_W / 2
+  },
+  mark: { width: MARK_W, height: MARK_H },
+  wordWrap: {
+    position: "absolute",
+    // Sits under the lifted mark: centre + (MARK_H/2 − LIFT) + breathing room.
+    top: H / 2 + MARK_H / 2 - LIFT + 22,
+    left: W / 2 - WORD_W / 2
+  },
+  word: { width: WORD_W, height: WORD_H }
 });

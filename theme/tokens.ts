@@ -121,13 +121,15 @@ export const type = {
 } as const;
 
 export const font = {
-  regular: "Inter_400Regular",
-  medium: "Inter_500Medium",
-  semibold: "Inter_600SemiBold",
-  bold: "Inter_700Bold",
+  // PostScript names of the bundled TTFs — the one identifier iOS and Android
+  // agree on once the files are named to match.
+  regular: "Inter-Regular",
+  medium: "Inter-Medium",
+  semibold: "Inter-SemiBold",
+  bold: "Inter-Bold",
   /** Editorial serif, display type only — never body copy. */
-  display: "Fraunces_600SemiBold",
-  displayBold: "Fraunces_700Bold"
+  display: "Fraunces-SemiBold",
+  displayBold: "Fraunces-Bold"
 } as const;
 
 /**

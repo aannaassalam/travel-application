@@ -1,9 +1,10 @@
-module.exports = function (api) {
-  api.cache(true);
-  return {
-    presets: ["babel-preset-expo"],
-    // Reanimated 4 runs its worklets through this plugin, and it has to stay
-    // last — anything after it sees code the plugin has already rewritten.
-    plugins: ["react-native-worklets/plugin"]
-  };
+module.exports = {
+  presets: ["module:@react-native/babel-preset"],
+  plugins: [
+    // "@/x" imports, matching tsconfig. Metro does not read tsconfig paths.
+    ["module-resolver", { root: ["./"], alias: { "@": "./" } }],
+    // Reanimated 4 rewrites worklets through this plugin, and it must stay
+    // last — anything after it sees code the plugin has already transformed.
+    "react-native-worklets/plugin"
+  ]
 };

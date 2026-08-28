@@ -4,10 +4,11 @@ import BottomSheet, {
   BottomSheetView,
   type BottomSheetBackdropProps
 } from "@gorhom/bottom-sheet";
-import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text } from "@/components/ui/Text";
+import { sheetClosed, sheetOpened } from "@/lib/sheetCount";
 import { color, radius, shadow, space } from "@/theme/tokens";
 
 export interface SheetHandle {
@@ -40,9 +41,29 @@ export const Sheet = forwardRef<
 >(function Sheet({ title, children, snapPoints, scrollable, onClose }, ref) {
   const inner = useRef<BottomSheet>(null);
   const insets = useSafeAreaInsets();
+  const openRef = useRef(false);
+
+  const report = useCallback((index: number) => {
+    const isOpen = index >= 0;
+    if (isOpen === openRef.current) return;
+    openRef.current = isOpen;
+    if (isOpen) sheetOpened();
+    else sheetClosed();
+  }, []);
+
+  // A sheet unmounted while open (screen popped beneath it) must still give
+  // the tab bar back.
+  useEffect(
+    () => () => {
+      if (openRef.current) sheetClosed();
+    },
+    []
+  );
 
   useImperativeHandle(ref, () => ({
-    open: () => inner.current?.expand(),
+    // The FIRST snap point, not expand(): a basket of one line opening at 85%
+    // of the screen is a sheet wearing a coat three sizes too big.
+    open: () => inner.current?.snapToIndex(0),
     close: () => inner.current?.close()
   }));
 
@@ -71,6 +92,11 @@ export const Sheet = forwardRef<
       enableDynamicSizing={!snapPoints}
       enablePanDownToClose
       backdropComponent={renderBackdrop}
+      // onAnimate fires as the transition STARTS; onChange only once it has
+      // settled. The tab bar reacts to the first so it moves WITH the sheet,
+      // and the second stays as the settled-state correction.
+      onAnimate={(_from, to) => report(to)}
+      onChange={report}
       onClose={onClose}
       handleIndicatorStyle={styles.grabber}
       backgroundStyle={styles.background}

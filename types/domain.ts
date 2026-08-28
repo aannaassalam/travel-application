@@ -32,6 +32,42 @@ export interface Paged<T> {
   total: number;
 }
 
+export interface FlightSegment {
+  origin: string;
+  destination: string;
+  departsAt: string;
+  arrivesAt: string;
+  carrier?: string;
+  flightNumber?: string;
+}
+
+/** The per-vertical facts the admin typed; only what the wire carries. */
+export interface ListingAttributes {
+  segments?: FlightSegment[];
+  cabin?: string;
+  tripType?: string;
+  baggage?: string;
+  operator?: string;
+  vehicleClass?: string;
+  departsAt?: string;
+  arrivesAt?: string;
+  routeStops?: string[];
+  category?: string;
+  transmission?: string;
+  mileageLimit?: string;
+  pickupLocations?: string[];
+  withDriver?: boolean;
+  durationMinutes?: number;
+  maxParticipants?: number;
+  propertyType?: string;
+  bedrooms?: number;
+  areaSqm?: number;
+  plotSizeSqm?: number;
+  priceBasis?: string;
+  availabilityStatus?: string;
+  [key: string]: unknown;
+}
+
 export interface Listing {
   id: string;
   vertical: Vertical;
@@ -44,7 +80,7 @@ export interface Listing {
   available?: number;
   rating?: number;
   reviewCount?: number;
-  attributes?: Record<string, unknown>;
+  attributes?: ListingAttributes;
 }
 
 export interface RoomType {
@@ -122,6 +158,24 @@ export interface OrderItem {
   listingLabel: string;
   quantity: number;
   lineTotal: Money;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface Traveller {
+  firstName: string;
+  lastName: string;
+  dateOfBirth?: string;
+  documentType?: "PASSPORT" | "ID" | "OTHER";
+  documentNumber?: string;
+  documentNumberMasked?: string;
+  nationality?: string;
+}
+
+export interface TimelineEntry {
+  event: string;
+  at: string;
+  detail?: string;
 }
 
 export interface Order {
@@ -135,6 +189,8 @@ export interface Order {
   chargedTotal: number;
   paymentMethod: "CASH" | "ONLINE";
   cashDeadline?: string;
+  travellers?: Traveller[];
+  timeline?: TimelineEntry[];
   createdAt?: string;
   delivery?: {
     address: string;

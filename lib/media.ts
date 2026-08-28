@@ -1,4 +1,4 @@
-import Constants from "expo-constants";
+import { API_BASE } from "@/lib/config";
 
 /**
  * Turn an image path from the API into something the app can actually load.
@@ -7,18 +7,12 @@ import Constants from "expo-constants";
  * (S3), and root-relative paths like `/img/banner-1.svg` for the placeholder
  * artwork that ships with the website. A browser resolves the second against
  * the page origin without being asked; a native app has no origin, so those
- * paths silently render nothing — which is exactly what a blank hero over a
- * grey rectangle is.
+ * paths silently render nothing.
  *
- * SVG is dropped rather than passed through: `expo-image` cannot decode it
- * without an extra native decoder, and a broken image is worse than a clean
- * placeholder the card already styles for.
+ * SVG is dropped rather than passed through: the native image pipeline cannot
+ * decode it, and a broken image is worse than the styled fallback every card
+ * carries.
  */
-const API_BASE =
-  (Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined)?.apiBaseUrl ??
-  "http://localhost:3001/api/v1";
-
-/** The site origin, derived from the API base by dropping the `/api/v1` tail. */
 const ORIGIN = API_BASE.replace(/\/api\/v\d+\/?$/, "");
 
 export function mediaUrl(src?: string): string | undefined {
@@ -31,3 +25,7 @@ export function mediaUrl(src?: string): string | undefined {
 /** First usable image in a gallery, skipping anything we cannot decode. */
 export const firstMedia = (images?: string[]): string | undefined =>
   (images ?? []).map(mediaUrl).find(Boolean);
+
+/** RN Image wants a number for bundled assets and {uri} for remote ones. */
+export const toSource = (src?: string | number) =>
+  typeof src === "number" ? src : src ? { uri: src } : undefined;

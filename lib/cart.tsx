@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Haptics from "expo-haptics";
+import { haptic } from "@/lib/haptics";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { sumMoney } from "@/lib/money";
 import type { MenuItem, Money, Restaurant } from "@/types/domain";
@@ -97,14 +97,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const add = useCallback(
     (item: MenuItem, restaurant: Restaurant) => {
       if (state.restaurantId && state.restaurantId !== restaurant.id) {
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        haptic.warning();
         setPending({ item, restaurant });
         return;
       }
       const existing = state.lines.find((l) => l.menuItemId === item.id);
       if (!existing && state.lines.length >= MAX_LINES) return;
 
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      haptic.light();
       persist({
         restaurantId: restaurant.id,
         restaurantSlug: restaurant.slug,
@@ -124,7 +124,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const setQuantity = useCallback(
     (menuItemId: string, quantity: number) => {
       const q = Math.max(0, Math.min(Math.trunc(quantity), MAX_QTY));
-      void Haptics.selectionAsync();
+      haptic.selection();
       // Zero removes rather than leaving a 0 line, which the API would refuse.
       const lines =
         q === 0

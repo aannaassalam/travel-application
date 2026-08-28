@@ -14,6 +14,7 @@ export interface Customer {
   firstName: string;
   lastName: string;
   phone: string;
+  email?: string;
 }
 
 interface SessionCtx {
@@ -21,6 +22,8 @@ interface SessionCtx {
   ready: boolean;
   signIn: (token: string, customer: Customer) => Promise<void>;
   signOut: () => Promise<void>;
+  /** After a profile save: the server's copy replaces the local one. */
+  update: (customer: Customer) => void;
 }
 
 const Ctx = createContext<SessionCtx | null>(null);
@@ -55,7 +58,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setCustomer(null);
   }, []);
 
-  const value = useMemo(() => ({ customer, ready, signIn, signOut }), [customer, ready, signIn, signOut]);
+  const update = useCallback((c: Customer) => setCustomer(c), []);
+
+  const value = useMemo(
+    () => ({ customer, ready, signIn, signOut, update }),
+    [customer, ready, signIn, signOut, update]
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

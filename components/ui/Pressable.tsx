@@ -1,4 +1,4 @@
-import * as Haptics from "expo-haptics";
+import { haptic as fire } from "@/lib/haptics";
 import { useCallback } from "react";
 import { Pressable as RNPressable, type PressableProps, type ViewStyle } from "react-native";
 import Animated, {
@@ -29,6 +29,8 @@ export function Pressable({
   scaleTo = 0.97,
   haptic = "light",
   disabled,
+  onPressIn: onPressInProp,
+  onPressOut: onPressOutProp,
   ...props
 }: PressableProps & {
   style?: ViewStyle | ViewStyle[];
@@ -42,19 +44,26 @@ export function Pressable({
     opacity: disabled ? 0.45 : 1
   }));
 
-  const onPressIn = useCallback(() => {
-    pressed.value = withTiming(1, { duration: motion.press, easing: EXPO_OUT });
-    if (haptic === "none" || disabled) return;
-    if (haptic === "selection") void Haptics.selectionAsync();
-    else
-      void Haptics.impactAsync(
-        haptic === "medium" ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light
-      );
-  }, [pressed, haptic, disabled]);
+  const onPressIn = useCallback<NonNullable<PressableProps["onPressIn"]>>(
+    (e) => {
+      pressed.value = withTiming(1, { duration: motion.press, easing: EXPO_OUT });
+      // The caller's handler runs too — prefetch-on-touch depends on it.
+      onPressInProp?.(e);
+      if (haptic === "none" || disabled) return;
+      if (haptic === "selection") fire.selection();
+      else if (haptic === "medium") fire.medium();
+      else fire.light();
+    },
+    [pressed, haptic, disabled, onPressInProp]
+  );
 
-  const onPressOut = useCallback(() => {
-    pressed.value = withTiming(0, { duration: motion.press, easing: EXPO_OUT });
-  }, [pressed]);
+  const onPressOut = useCallback<NonNullable<PressableProps["onPressOut"]>>(
+    (e) => {
+      pressed.value = withTiming(0, { duration: motion.press, easing: EXPO_OUT });
+      onPressOutProp?.(e);
+    },
+    [pressed, onPressOutProp]
+  );
 
   return (
     <AnimatedPressable

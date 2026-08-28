@@ -1,5 +1,5 @@
-import Constants from "expo-constants";
-import * as SecureStore from "expo-secure-store";
+import * as Keychain from "react-native-keychain";
+import { API_BASE } from "@/lib/config";
 import type {
   Hotel,
   Listing,
@@ -7,6 +7,7 @@ import type {
   Paged,
   Restaurant,
   SiteContact,
+  Traveller,
   Vertical
 } from "@/types/domain";
 
@@ -18,17 +19,13 @@ import type {
  * disagreeing about what the API returns.
  *
  * The one real difference is the session. The web holds an httpOnly cookie;
- * a native app has no cookie jar worth trusting, so the token is kept in the
- * device keychain and sent as a Bearer header. §7.3 forbids a session token in
- * web localStorage for the same reason SecureStore is right here: the store has
- * to be one a script on a page cannot reach.
+ * a native app has no cookie jar worth trusting, so the token lives in the
+ * device keychain and travels as a Bearer header. §7.3 forbids a session token
+ * in web localStorage for the same reason the keychain is right here: the
+ * store has to be one no script or backup dump can casually read.
  */
 
-const API_BASE =
-  (Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined)?.apiBaseUrl ??
-  "http://localhost:3001/api/v1";
-
-const TOKEN_KEY = "flexi.session";
+const KEYCHAIN_SERVICE = "com.flexiagency.app.session";
 
 export class ApiError extends Error {
   constructor(
@@ -47,9 +44,10 @@ let cachedToken: string | null | undefined;
 export async function getToken(): Promise<string | null> {
   if (cachedToken !== undefined) return cachedToken;
   try {
-    cachedToken = await SecureStore.getItemAsync(TOKEN_KEY);
+    const stored = await Keychain.getGenericPassword({ service: KEYCHAIN_SERVICE });
+    cachedToken = stored ? stored.password : null;
   } catch {
-    // A device with no secure enclave available still has to run.
+    // A device with no keychain access still has to run.
     cachedToken = null;
   }
   return cachedToken;
@@ -58,8 +56,11 @@ export async function getToken(): Promise<string | null> {
 export async function setToken(token: string | null) {
   cachedToken = token;
   try {
-    if (token) await SecureStore.setItemAsync(TOKEN_KEY, token);
-    else await SecureStore.deleteItemAsync(TOKEN_KEY);
+    if (token) {
+      await Keychain.setGenericPassword("session", token, { service: KEYCHAIN_SERVICE });
+    } else {
+      await Keychain.resetGenericPassword({ service: KEYCHAIN_SERVICE });
+    }
   } catch {
     /* an unwritable keychain means this session lasts until the app closes */
   }
@@ -131,8 +132,12 @@ export const getListing = (slug: string) =>
 export const searchHotels = (q: SearchQuery) =>
   request<Paged<Hotel>>(`/hotels${qs(q as never)}`);
 
-export const getHotel = (slug: string) =>
-  request<{ hotel: Hotel; others: Hotel[] }>(`/hotels/${encodeURIComponent(slug)}`);
+export const getHotel = (slug: string, from?: string, to?: string) =>
+  // With dates, price and availability come back scoped to that stay;
+  // without, availability is the tightest night ever loaded — pessimistic.
+  request<{ hotel: Hotel; others: Hotel[] }>(
+    `/hotels/${encodeURIComponent(slug)}${qs({ from, to })}`
+  );
 
 export const searchRestaurants = (q: { city?: string; cuisine?: string; limit?: number }) =>
   request<Paged<Restaurant>>(`/restaurants${qs(q as never)}`);
@@ -141,6 +146,23 @@ export const getRestaurant = (slug: string) =>
   request<{ restaurant: Restaurant }>(`/restaurants/${encodeURIComponent(slug)}`);
 
 export const getSiteContact = () => request<{ contact: SiteContact }>("/site/contact");
+
+/** The homepage feed: two of every sellable vertical, interleaved, plus the
+ *  newest properties and the top hotels — the same rail the website leads with. */
+export const getHomeFeed = () =>
+  request<{ deals: Listing[]; properties: Listing[]; hotels: Hotel[] }>("/catalogue/home");
+
+export const createEnquiry = (payload: {
+  customerName: string;
+  phone: string;
+  message: string;
+  vertical?: Vertical;
+}, idempotencyKey: string) =>
+  request<{ reference: string }>("/enquiries", {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(payload)
+  });
 
 // --- auth --------------------------------------------------------------------
 
@@ -167,13 +189,30 @@ export const verifyOtp = (payload: {
   });
 
 export const me = () =>
-  request<{ customer: { firstName: string; lastName: string; phone: string } }>("/auth/me");
+  request<{ customer: { firstName: string; lastName: string; phone: string; email?: string } }>(
+    "/auth/me"
+  );
+
+export const updateMe = (patch: { firstName?: string; lastName?: string; email?: string }) =>
+  request<{ customer: { firstName: string; lastName: string; phone: string; email?: string } }>(
+    "/auth/me",
+    { method: "PATCH", body: JSON.stringify(patch) }
+  );
 
 // --- orders ------------------------------------------------------------------
 
 export interface OrderDraft {
-  items: { vertical: Vertical; listingId: string; roomTypeId?: string; quantity: number }[];
+  items: {
+    vertical: Vertical;
+    listingId?: string;
+    roomTypeId?: string;
+    /** ISO dates; a stay needs both, a car hire prices per day between them. */
+    startDate?: string;
+    endDate?: string;
+    quantity: number;
+  }[];
   delivery?: { address: string; zoneId: string; notes?: string };
+  travellers?: Traveller[];
   contact: { firstName: string; lastName: string; phone: string; email?: string };
   paymentMethod: "CASH" | "ONLINE";
   currency: string;

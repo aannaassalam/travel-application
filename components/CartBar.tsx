@@ -1,10 +1,16 @@
-import { useRouter } from "expo-router";
+import { useAppNavigation } from "@/navigation/types";
 import { ChevronUp, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react-native";
 import { useRef } from "react";
 import { StyleSheet, View } from "react-native";
-import Animated, { FadeInDown, FadeOutDown } from "react-native-reanimated";
+import { useEffect } from "react";
+import Animated, {
+  Easing,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BlurView } from "expo-blur";
 import { Button } from "@/components/ui/Button";
 import { Pressable } from "@/components/ui/Pressable";
 import { Sheet, type SheetHandle } from "@/components/ui/Sheet";
@@ -26,9 +32,19 @@ import { color, radius, shadow, space } from "@/theme/tokens";
  * The bar sits ABOVE the tab bar rather than replacing it, so the customer can
  * still leave for another tab with a basket in hand.
  */
-export function CartBar() {
+export function CartBar({
+  bottomOffset = 0,
+  insetBottom = false
+}: {
+  /** Distance from the bottom of the SCREEN AREA the bar floats at. Inside a
+   *  tab screen the tab bar already ends the area, so a small offset is right;
+   *  a stack screen reaches the physical edge, so `insetBottom` adds the safe
+   *  area on top. */
+  bottomOffset?: number;
+  insetBottom?: boolean;
+}) {
   const { t, locale, currency } = usePrefs();
-  const router = useRouter();
+  const navigation = useAppNavigation();
   const insets = useSafeAreaInsets();
   const sheet = useRef<SheetHandle>(null);
   const {
@@ -46,17 +62,36 @@ export function CartBar() {
 
   const showBar = ready && count > 0;
 
+  /**
+   * The bar's entrance is a shared-value style, NOT the entering/exiting API.
+   * On this RN/Reanimated pairing a view mounted through `entering` can come
+   * up with broken hit-testing — the bar appeared but neither the summary nor
+   * Checkout responded to a single tap. Style-driven animation keeps the
+   * native view an ordinary one, and ordinary views take touches.
+   */
+  const shown = useSharedValue(0);
+  useEffect(() => {
+    shown.value = withTiming(showBar ? 1 : 0, {
+      duration: 320,
+      easing: Easing.bezier(0.16, 1, 0.3, 1)
+    });
+  }, [showBar, shown]);
+
+  const barStyle = useAnimatedStyle(() => ({
+    opacity: shown.value,
+    transform: [{ translateY: interpolate(shown.value, [0, 1], [24, 0]) }]
+  }));
+
   return (
     <>
       {showBar && (
         <Animated.View
-          // Entering and exiting the same way it arrived, so an emptied basket
-          // withdraws rather than blinking out.
-          entering={FadeInDown.duration(320)}
-          exiting={FadeOutDown.duration(220)}
-          style={[styles.bar, { bottom: insets.bottom + 56 }]}
+          style={[
+            styles.bar,
+            { bottom: bottomOffset + (insetBottom ? insets.bottom : 0) + space[3] },
+            barStyle
+          ]}
         >
-          <BlurView intensity={90} tint="light" style={StyleSheet.absoluteFill} />
           <View style={styles.barRow}>
             <Pressable
               onPress={() => sheet.current?.open()}
@@ -78,7 +113,7 @@ export function CartBar() {
             <Button
               label={t("cart.checkout")}
               icon={<ShoppingBag size={16} color={color.brand900} strokeWidth={2.4} />}
-              onPress={() => router.push("/checkout")}
+              onPress={() => navigation.navigate("Checkout")}
               size="sm"
             />
           </View>
@@ -131,7 +166,7 @@ export function CartBar() {
                 style={styles.trash}
                 accessibilityLabel={`${t("common.close")} ${l.name}`}
               >
-                <Trash2 size={17} color={color.ink300} strokeWidth={2.2} />
+                <Trash2 size={17} color={color.ink500} strokeWidth={2.2} />
               </Pressable>
             </View>
           ))}
@@ -142,9 +177,13 @@ export function CartBar() {
 
           <Button
             label={t("cart.checkout")}
+            // Deleting the last line leaves the sheet open with nothing to
+            // check out; the button must say so instead of leading to an
+            // empty screen.
+            disabled={count === 0}
             onPress={() => {
               sheet.current?.close();
-              router.push("/checkout");
+              navigation.navigate("Checkout");
             }}
             full
             style={{ marginTop: space[4] }}
@@ -165,7 +204,7 @@ export function CartBar() {
           >
             <View style={styles.scrim} />
           </Pressable>
-          <Animated.View entering={FadeInDown.duration(260)} style={styles.dialog}>
+          <View style={styles.dialog}>
             <Text variant="lg" weight="bold" tone="brand900">
               {t("cart.empty")}?
             </Text>
@@ -176,7 +215,7 @@ export function CartBar() {
               <Button label={t("cart.keep")} variant="outline" onPress={cancelReplace} />
               <Button label={t("cart.emptyAndAdd")} variant="dark" onPress={confirmReplace} />
             </View>
-          </Animated.View>
+          </View>
         </View>
       ) : null}
     </>
@@ -189,7 +228,7 @@ const styles = StyleSheet.create({
     left: space[4],
     right: space[4],
     borderRadius: radius.lg,
-    overflow: "hidden",
+    backgroundColor: color.white,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: color.ink100,
     ...shadow.lg

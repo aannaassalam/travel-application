@@ -1,8 +1,10 @@
+import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { MapPin } from "lucide-react-native";
 import { useMemo, useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
 import { Text } from "@/components/ui/Text";
+import { cityPhoto } from "@/lib/photos";
 import { usePrefs } from "@/lib/prefs";
 import { color, font, radius, space } from "@/theme/tokens";
 
@@ -32,7 +34,8 @@ export function DestinationSheet({
 
   return (
     <View style={styles.wrap}>
-      <TextInput
+      {/* The sheet-aware input keeps the keyboard from covering the sheet. */}
+      <BottomSheetTextInput
         value={query}
         onChangeText={setQuery}
         placeholder={t("home.search")}
@@ -45,7 +48,15 @@ export function DestinationSheet({
 
       {matches.map((city) => (
         <Pressable key={city} onPress={() => onPick(city)} style={styles.row} haptic="selection">
-          <MapPin size={18} color={color.brand500} strokeWidth={2.2} />
+          {/* The city's own photograph, not a pin glyph — the list should look
+              like places, and it costs nothing: the images are bundled. */}
+          {cityPhoto(city) ? (
+            <Image source={cityPhoto(city)} style={styles.thumb} resizeMode="cover" />
+          ) : (
+            <View style={styles.thumbFallback}>
+              <MapPin size={16} color={color.brand500} strokeWidth={2.2} />
+            </View>
+          )}
           <Text variant="base" weight="medium" tone="ink900">
             {city}
           </Text>
@@ -79,10 +90,19 @@ const styles = StyleSheet.create({
     marginBottom: space[2]
   },
   row: {
-    minHeight: 52,
+    minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
     gap: space[3],
     paddingHorizontal: space[1]
+  },
+  thumb: { width: 42, height: 42, borderRadius: radius.sm, backgroundColor: color.ink100 },
+  thumbFallback: {
+    width: 42,
+    height: 42,
+    borderRadius: radius.sm,
+    backgroundColor: color.brand50,
+    alignItems: "center",
+    justifyContent: "center"
   }
 });
