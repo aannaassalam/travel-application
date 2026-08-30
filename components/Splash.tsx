@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AccessibilityInfo, Dimensions, Image, StyleSheet, View } from "react-native";
 import BootSplash from "react-native-bootsplash";
 import Animated, {
@@ -78,6 +78,11 @@ const WORD_H = Math.round((WORD_W * 142) / 675);
 const ROAD_Y = H * 0.5 + MARK_H / 2 - 14;
 const ROAD_PATH = `M ${-W * 0.1} ${ROAD_Y} Q ${W * 0.5} ${ROAD_Y - 42} ${W * 1.1} ${ROAD_Y}`;
 const ROAD_LEN = W * 1.4;
+/** The dash animates every frame, and Android re-draws the whole Svg each
+ *  time — so the Svg is a tight band around the stroke, not the full screen.
+ *  Curve peak is ROAD_Y−21; a little slack each side covers the stroke width. */
+const ROAD_TOP = ROAD_Y - 26;
+const ROAD_BAND = 32;
 
 /**
  * The cab, drawn rather than shipped: an image of a car at this size would be a
@@ -122,8 +127,18 @@ const DRIVE_MS = 1600;
  * cut runs through the roof sign and the car starts to look like a sticker.
  */
 const CURTAIN_AT = 0.78;
-/** The reveal starts the moment that point clears the bottom edge. */
-const REVEAL_AT = DRIVE_DELAY + Math.round((DRIVE_MS * TAXI_H * CURTAIN_AT) / (H + TAXI_H));
+/** When the curtain's pinned point clears the bottom edge and it starts moving. */
+const CURTAIN_MOVES_AT = DRIVE_DELAY + Math.round((DRIVE_MS * TAXI_H * CURTAIN_AT) / (H + TAXI_H));
+/**
+ * The reveal fires EARLIER than the curtain moves, while the plate still covers
+ * the whole screen. Waking every Reveal at once is a burst of JS renders and a
+ * Fabric commit, and commits share the cab's thread — fired at curtain-start it
+ * landed as a visible hitch mid-drive. Behind the opaque plate the same stall
+ * costs nothing to look at, and the entrances (420ms + stagger) are still
+ * mid-flight when the curtain starts exposing them, so the page still arrives
+ * moving rather than standing finished.
+ */
+const REVEAL_AT = Math.max(DRIVE_DELAY, CURTAIN_MOVES_AT - 380);
 
 /** Headlamp bloom, sized and placed off the lamps rather than the whole car.
  *  Centred a little AHEAD of the lamps — light is thrown forward, and a bloom
@@ -148,6 +163,9 @@ function TaxiTop() {
       source={require("@/assets/images/taxi-top.png")}
       style={{ width: TAXI_W, height: TAXI_H }}
       resizeMode="contain"
+      // Android fades images in over 300ms by default; on a cab already in
+      // motion that fade reads as a stutter. It is either there or it is not.
+      fadeDuration={0}
     />
   );
 }
@@ -160,6 +178,8 @@ export default function Splash({ onDone }: { onDone: () => void }) {
   const drive = useSharedValue(0);
   const lamps = useSharedValue(0);
   const fade = useSharedValue(0);
+  // Flips as the curtain starts to move; gates the plate's hardware texture.
+  const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
     // First frame is committed by the time this effect runs; hiding the native
@@ -213,9 +233,14 @@ export default function Splash({ onDone }: { onDone: () => void }) {
       // Lights on, after the lockup has settled and once the cab's nose is
       // already in frame — it noses in dark, then switches on.
       lamps.value = withDelay(LAMPS_AT, withTiming(1, { duration: LAMPS_MS }));
-      // Fire when the rear bumper crosses the bottom edge and the reveal
-      // actually starts, so the page cascades in behind the cab.
-      timer = setTimeout(markSplashRevealed, REVEAL_AT);
+      // The reveal storm fires behind the opaque plate (see REVEAL_AT), and
+      // the plate is promoted to a hardware texture at the same moment — its
+      // own content is done animating by then, and both costs land while the
+      // stall is invisible instead of mid-drive.
+      timer = setTimeout(() => {
+        setExiting(true);
+        markSplashRevealed();
+      }, REVEAL_AT);
     });
 
     return () => {
@@ -287,7 +312,17 @@ export default function Splash({ onDone }: { onDone: () => void }) {
     // The outer layer carries no colour of its own — it is only a stacking
     // context. The navy belongs to the curtain, which has to be able to leave.
     <View style={[StyleSheet.absoluteFill, styles.root]} pointerEvents="none">
-      <Animated.View style={[StyleSheet.absoluteFill, styles.plate, plateStyle]}>
+      {/* Hardware texture, but only ONCE the exit starts. The plate is a full
+          screen of SVG; without a texture Android re-draws all of it on every
+          frame of the exit slide, which is where the drive stuttered. Enabling
+          it earlier backfires — the road and wordmark animate inside the plate
+          for the first second, and each frame would re-upload a full-screen
+          texture instead. By REVEAL_AT the content is static and the exit is
+          a pure translate of one cached layer. */}
+      <Animated.View
+        renderToHardwareTextureAndroid={exiting}
+        style={[StyleSheet.absoluteFill, styles.plate, plateStyle]}
+      >
         {/* Ground vignette, arriving with the glow — one light source, not two
           competing fades. The base stays the launch screen's exact navy. */}
         <Animated.View style={[StyleSheet.absoluteFill, vignetteStyle]}>
@@ -299,7 +334,12 @@ export default function Splash({ onDone }: { onDone: () => void }) {
 
         {/* The road, drawn rather than faded — a stroke-dash reveal is the one
           way to make a line look travelled instead of switched on. */}
-        <Svg width={W} height={H} style={StyleSheet.absoluteFill}>
+        <Svg
+          width={W}
+          height={ROAD_BAND}
+          viewBox={`0 ${ROAD_TOP} ${W} ${ROAD_BAND}`}
+          style={[styles.roadBand, { top: ROAD_TOP }]}
+        >
           <Defs>
             <SvgGradient id="road" x1="0" y1="0" x2="1" y2="0">
               <Stop offset="0" stopColor={color.accent500} stopOpacity="0" />
@@ -347,10 +387,13 @@ export default function Splash({ onDone }: { onDone: () => void }) {
           transform on their own layers because they sit ahead of its box, and
           Android clips a child that leaves its parent's bounds — which would
           put a hard square edge on the one thing that must not have one. */}
-      <Animated.View style={[styles.lampLeft, lampStyle]}>
+      {/* Rasterized: each glow is a static radial gradient whose wrapper
+          animates transform and opacity — both compose against a cached
+          texture instead of re-rendering the SVG every frame. */}
+      <Animated.View renderToHardwareTextureAndroid style={[styles.lampLeft, lampStyle]}>
         <RadialGlow color="#ffeab8" opacity={LAMP_OPACITY} />
       </Animated.View>
-      <Animated.View style={[styles.lampRight, lampStyle]}>
+      <Animated.View renderToHardwareTextureAndroid style={[styles.lampRight, lampStyle]}>
         <RadialGlow color="#ffeab8" opacity={LAMP_OPACITY} />
       </Animated.View>
 
@@ -366,6 +409,7 @@ export default function Splash({ onDone }: { onDone: () => void }) {
 const styles = StyleSheet.create({
   root: { zIndex: 100 },
   plate: { backgroundColor: color.brand900 },
+  roadBand: { position: "absolute", left: 0 },
   taxiWrap: {
     position: "absolute",
     top: 0,
