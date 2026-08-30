@@ -1,6 +1,7 @@
 import { useRoute, type RouteProp } from "@react-navigation/native";
 import { useQuery } from "@tanstack/react-query";
 import { Image, StyleSheet, TextInput, View } from "react-native";
+import FastImage from "@d11/react-native-fast-image";
 import Animated, { useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArrowUpDown, Check, Search, Star } from "lucide-react-native";
@@ -84,7 +85,10 @@ export default function ResultsScreen() {
   const contact = useQuery({ queryKey: ["site-contact"], queryFn: getSiteContact });
 
   const active = isHotel ? hotels : listings;
-  const rows: Row[] = isHotel
+  // Memoised: every keystroke in the filter re-renders this screen, and
+  // rebuilding 30 rows each time re-runs lz/firstMedia/cityPhoto over the lot
+  // — and hands FlatList a fresh identity, which re-renders every visible row.
+  const rows: Row[] = useMemo(() => (isHotel
     ? (hotels.data?.items ?? []).map((h) => ({
         id: h.id,
         slug: h.slug,
@@ -112,7 +116,7 @@ export default function ResultsScreen() {
         reviewCount: l.reviewCount,
         isHotel: false,
         listing: l
-      }));
+      }))), [isHotel, hotels.data, listings.data, lz]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -166,6 +170,13 @@ export default function ResultsScreen() {
         scrollEventThrottle={16}
         data={shown}
         keyExtractor={(r) => r.id}
+        // List hygiene for mid-range Android: clip offscreen rows at the
+        // native level, keep ~2 screens either side instead of ~10, and paint
+        // fewer rows before first frame.
+        removeClippedSubviews
+        windowSize={5}
+        maxToRenderPerBatch={8}
+        initialNumToRender={6}
         contentContainerStyle={{
           paddingTop: insets.top + space[12],
           paddingBottom: insets.bottom + space[12],
@@ -220,7 +231,7 @@ export default function ResultsScreen() {
             >
               <Surface style={styles.card}>
                 {r.image ? (
-                  <Image source={toSource(r.image)} style={styles.thumb} resizeMode="cover" />
+                  <FastImage source={toSource(r.image)} style={styles.thumb} resizeMode="cover" />
                 ) : (
                   <View style={[styles.thumb, styles.thumbFallback]} />
                 )}

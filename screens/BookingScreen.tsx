@@ -1,9 +1,9 @@
+import { haptic } from "@/lib/haptics";
 import { useRoute, type RouteProp } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Check, Users, X } from "lucide-react-native";
 import { useState } from "react";
 import {
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -11,6 +11,7 @@ import {
   TextInput,
   View
 } from "react-native";
+import FastImage from "@d11/react-native-fast-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Reveal } from "@/components/motion/Reveal";
 import { Button } from "@/components/ui/Button";
@@ -126,8 +127,10 @@ export default function BookingScreen() {
       // the bookings list refresh itself in the background.
       qc.setQueryData(["order", order.reference], { order });
       void qc.invalidateQueries({ queryKey: ["my-orders"] });
+      haptic.success();
       navigation.replace("Order", { reference: order.reference });
     } catch (e) {
+      haptic.error();
       setError(e instanceof ApiError ? e.message : t("common.error"));
       setBusy(false);
     }
@@ -169,7 +172,7 @@ export default function BookingScreen() {
         <Reveal>
           <Surface style={styles.recap}>
             {s.image ? (
-              <Image source={toSource(s.image)} style={styles.recapImage} resizeMode="cover" />
+              <FastImage source={toSource(s.image)} style={styles.recapImage} resizeMode="cover" />
             ) : null}
             <View style={styles.recapBody}>
               <Text variant="base" weight="bold" tone="brand900" numberOfLines={2}>

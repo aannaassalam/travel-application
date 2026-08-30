@@ -1,6 +1,6 @@
 import { haptic as fire } from "@/lib/haptics";
 import { useCallback } from "react";
-import { Pressable as RNPressable, type PressableProps, type ViewStyle } from "react-native";
+import { Pressable as RNPressable, StyleSheet, type PressableProps, type ViewStyle } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -39,9 +39,11 @@ export function Pressable({
 }) {
   const pressed = useSharedValue(0);
 
+  // Only the scale is animated; `disabled` is a static branch, and putting it
+  // in the worklet forced a closure rebuild on the UI runtime for a value that
+  // never changes mid-press. It rides the plain style array instead.
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 - pressed.value * (1 - scaleTo) }],
-    opacity: disabled ? 0.45 : 1
+    transform: [{ scale: 1 - pressed.value * (1 - scaleTo) }]
   }));
 
   const onPressIn = useCallback<NonNullable<PressableProps["onPressIn"]>>(
@@ -72,10 +74,12 @@ export function Pressable({
       disabled={disabled}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
-      style={[style, animatedStyle]}
+      style={[style, disabled && styles.disabled, animatedStyle]}
       {...props}
     >
       {children as React.ReactNode}
     </AnimatedPressable>
   );
 }
+
+const styles = StyleSheet.create({ disabled: { opacity: 0.45 } });

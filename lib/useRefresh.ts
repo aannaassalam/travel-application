@@ -1,3 +1,4 @@
+import { haptic } from "@/lib/haptics";
 import { useCallback, useRef, useState } from "react";
 
 /**
@@ -22,6 +23,9 @@ export function useRefresh(refetch: () => Promise<unknown>) {
     } finally {
       const remaining = 700 - (Date.now() - started);
       if (remaining > 0) await new Promise<void>((r) => setTimeout(r, remaining));
+      // A tick as the spinner retracts — the gesture ends with an answer
+      // rather than just stopping.
+      haptic.light();
       setRefreshing(false);
     }
   }, []);

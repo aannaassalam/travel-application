@@ -4,7 +4,7 @@ import { StyleSheet, View } from "react-native";
 import { Pressable } from "@/components/ui/Pressable";
 import { Text } from "@/components/ui/Text";
 import { usePrefs } from "@/lib/prefs";
-import { color, radius, space } from "@/theme/tokens";
+import { color, space } from "@/theme/tokens";
 
 /**
  * A two-tap range picker: tap check-in, tap check-out.

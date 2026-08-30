@@ -8,7 +8,6 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Splash from "@/components/Splash";
 import { TabBar } from "@/components/TabBar";
-import { Text } from "@/components/ui/Text";
 import { getHomeFeed, getSiteContact, searchListings, searchRestaurants } from "@/lib/api";
 import { CartProvider } from "@/lib/cart";
 import { PrefsProvider, usePrefs } from "@/lib/prefs";

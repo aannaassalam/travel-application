@@ -1,9 +1,10 @@
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { Compass, ShoppingBag, Ticket, User } from "lucide-react-native";
-import { useEffect } from "react";
-import { LayoutAnimation, StyleSheet, View } from "react-native";
+import { useEffect, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
+  interpolateColor,
   useAnimatedStyle,
   useSharedValue,
   withTiming
@@ -13,7 +14,7 @@ import { Pressable } from "@/components/ui/Pressable";
 import { Text } from "@/components/ui/Text";
 import { useCart } from "@/lib/cart";
 import { useSheetsOpen } from "@/lib/sheetCount";
-import { color, space } from "@/theme/tokens";
+import { color, font, space } from "@/theme/tokens";
 
 /** How much scrollable content must clear at the bottom to stay readable
  *  above the floating bar (its height plus the gap beneath it). */
@@ -26,6 +27,13 @@ const ICONS: Record<string, typeof Compass> = {
   AccountTab: User
 };
 
+/** One eased breath, shared by every moving part of a tab change so the pill,
+ *  label and icons read as a single gesture. */
+const EASE = Easing.bezier(0.25, 0.1, 0.25, 1);
+const MS = 320;
+
+const TAB_MIN = 48;
+
 /**
  * The floating pill.
  *
@@ -33,6 +41,17 @@ const ICONS: Record<string, typeof Compass> = {
  * page scrolls away underneath, which reads as depth rather than chrome. The
  * active tab expands into a navy pill holding its label; the inactive ones sit
  * as quiet icons — the bar says where you are, not four labels at once.
+ *
+ * Every part of the hand-off is one shared value per tab, eased on the UI
+ * thread: the pill's navy fades in as its width grows, the label slides in
+ * under the icon's wing, and the icon itself crossfades between its two
+ * tints. The previous version toggled styles and asked LayoutAnimation to
+ * smooth over the jump — which Fabric on Android honours inconsistently, so
+ * tab changes hitched exactly where they were supposed to glide.
+ *
+ * The label is always mounted (clipped, faded) rather than conditionally
+ * rendered: mounting text mid-animation is a layout pop, and the measured
+ * width is what the pill eases toward.
  */
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -61,65 +80,116 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       pointerEvents={sheetsOpen ? "none" : "box-none"}
     >
       <View style={styles.bar}>
-        {state.routes.map((route, index) => {
-          const focused = state.index === index;
-          const Icon = ICONS[route.name] ?? Compass;
-          const label = descriptors[route.key].options.title ?? route.name;
-
-          const onPress = () => {
-            const event = navigation.emit({
-              type: "tabPress",
-              target: route.key,
-              canPreventDefault: true
-            });
-            if (!focused && !event.defaultPrevented) {
-              // The pill hands its width to the next tab in one eased motion
-              // instead of teleporting — the label mount/unmount rides this.
-              LayoutAnimation.configureNext({
-                duration: 260,
-                create: { type: "easeInEaseOut", property: "opacity" },
-                update: { type: "easeInEaseOut" },
-                delete: { type: "easeInEaseOut", property: "opacity" }
+        {state.routes.map((route, index) => (
+          <Tab
+            key={route.key}
+            focused={state.index === index}
+            label={descriptors[route.key].options.title ?? route.name}
+            Icon={ICONS[route.name] ?? Compass}
+            badge={route.name === "RestaurantsTab" ? count : 0}
+            onPress={() => {
+              const event = navigation.emit({
+                type: "tabPress",
+                target: route.key,
+                canPreventDefault: true
               });
-              navigation.navigate(route.name);
-            }
-          };
-
-          return (
-            <Pressable
-              key={route.key}
-              onPress={onPress}
-              style={[styles.tab, focused && styles.tabOn]}
-              haptic="selection"
-              scaleTo={0.94}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: focused }}
-              accessibilityLabel={label}
-            >
-              <View>
-                <Icon
-                  size={20}
-                  color={focused ? color.white : color.ink500}
-                  strokeWidth={2.2}
-                />
-                {route.name === "RestaurantsTab" && count > 0 ? (
-                  <View style={styles.badge}>
-                    <Text variant="2xs" weight="bold" style={styles.badgeText} allowFontScaling={false}>
-                      {count > 9 ? "9+" : count}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-              {focused ? (
-                <Text variant="sm" weight="bold" style={styles.labelOn} numberOfLines={1}>
-                  {label}
-                </Text>
-              ) : null}
-            </Pressable>
-          );
-        })}
+              if (state.index !== index && !event.defaultPrevented) {
+                navigation.navigate(route.name);
+              }
+            }}
+          />
+        ))}
       </View>
     </Animated.View>
+  );
+}
+
+function Tab({
+  focused,
+  label,
+  Icon,
+  badge,
+  onPress
+}: {
+  focused: boolean;
+  label: string;
+  Icon: typeof Compass;
+  badge: number;
+  onPress: () => void;
+}) {
+  const active = useSharedValue(focused ? 1 : 0);
+  // The label's natural width, measured once from a hidden twin — the pill
+  // eases toward it instead of guessing.
+  const [labelW, setLabelW] = useState(0);
+  const labelWidth = useSharedValue(0);
+
+  useEffect(() => {
+    active.value = withTiming(focused ? 1 : 0, { duration: MS, easing: EASE });
+  }, [focused, active]);
+  useEffect(() => {
+    labelWidth.value = labelW;
+  }, [labelW, labelWidth]);
+
+  const pillStyle = useAnimatedStyle(() => ({
+    width: TAB_MIN + active.value * (labelWidth.value ? labelWidth.value + space[2] + 6 : 0),
+    backgroundColor: interpolateColor(active.value, [0, 1], ["#FFFFFF00", color.brand900])
+  }));
+
+  // The label rides in from under the icon: fade plus a short slide, fully
+  // clipped by the pill while it travels.
+  const labelStyle = useAnimatedStyle(() => ({
+    opacity: active.value,
+    transform: [{ translateX: (1 - active.value) * -10 }]
+  }));
+
+  // Lucide colours are props, not styles — a worklet cannot reach them. Two
+  // copies crossfade instead, which stays on the UI thread.
+  const iconOffStyle = useAnimatedStyle(() => ({ opacity: 1 - active.value }));
+  const iconOnStyle = useAnimatedStyle(() => ({ opacity: active.value }));
+
+  return (
+    <Pressable
+      onPress={onPress}
+      haptic="selection"
+      scaleTo={0.94}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: focused }}
+      accessibilityLabel={label}
+    >
+      <Animated.View style={[styles.tab, pillStyle]}>
+        <View style={styles.iconStack}>
+          <Animated.View style={iconOffStyle}>
+            <Icon size={20} color={color.ink500} strokeWidth={2.2} />
+          </Animated.View>
+          <Animated.View style={[StyleSheet.absoluteFill, styles.iconCenter, iconOnStyle]}>
+            <Icon size={20} color={color.white} strokeWidth={2.2} />
+          </Animated.View>
+          {badge > 0 ? (
+            <View style={styles.badge}>
+              <Text variant="2xs" weight="bold" style={styles.badgeText} allowFontScaling={false}>
+                {badge > 9 ? "9+" : badge}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        <Animated.Text style={[styles.label, labelStyle]} numberOfLines={1}>
+          {label}
+        </Animated.Text>
+      </Animated.View>
+      {/* Invisible twin, out of the layout flow, purely to learn the width. */}
+      <Text
+        variant="sm"
+        weight="bold"
+        style={styles.measure}
+        numberOfLines={1}
+        onLayout={(e) => {
+          const w = Math.ceil(e.nativeEvent.layout.width);
+          if (w && w !== labelW) setLabelW(w);
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -148,16 +218,22 @@ const styles = StyleSheet.create({
   },
   tab: {
     height: 48,
-    minWidth: 48,
     borderRadius: 999,
-    paddingHorizontal: 14,
+    paddingLeft: 14,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: space[2]
+    gap: space[2],
+    overflow: "hidden"
   },
-  tabOn: { backgroundColor: color.brand900, paddingHorizontal: space[4] },
-  labelOn: { color: color.white },
+  iconStack: { width: 20, height: 20 },
+  iconCenter: { alignItems: "center", justifyContent: "center" },
+  label: {
+    color: color.white,
+    fontFamily: font.bold,
+    fontSize: 14,
+    flexShrink: 0
+  },
+  measure: { position: "absolute", opacity: 0, left: -9999, top: 0 },
   badge: {
     position: "absolute",
     top: -6,

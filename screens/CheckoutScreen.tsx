@@ -1,3 +1,4 @@
+import { haptic } from "@/lib/haptics";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAppNavigation } from "@/navigation/types";
 import { Bike, Check, ChevronDown, X } from "lucide-react-native";
@@ -127,8 +128,10 @@ export default function CheckoutScreen() {
       clear();
       qc.setQueryData(["order", order.reference], { order });
       void qc.invalidateQueries({ queryKey: ["my-orders"] });
+      haptic.success();
       navigation.replace("Order", { reference: order.reference });
     } catch (e) {
+      haptic.error();
       setError(e instanceof ApiError ? e.message : t("common.error"));
       setBusy(false);
     }

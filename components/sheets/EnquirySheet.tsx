@@ -1,3 +1,4 @@
+import { haptic } from "@/lib/haptics";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
@@ -50,8 +51,10 @@ export const EnquirySheet = forwardRef<SheetHandle>(function EnquirySheet(_, ref
         { customerName: name.trim(), phone: phone.trim(), message: message.trim() },
         `rn-enq-${Date.now()}`
       );
+      haptic.success();
       setSent(true);
     } catch (e) {
+      haptic.error();
       setError(e instanceof ApiError ? e.message : t("common.error"));
     } finally {
       setBusy(false);

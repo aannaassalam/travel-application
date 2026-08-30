@@ -3,7 +3,8 @@ import { GradientFill } from "@/components/ui/Gradient";
 import { useRoute, type RouteProp } from "@react-navigation/native";
 import type { RootStackParamList } from "@/navigation/types";
 import { Bike, Clock, MapPin, Minus, Plus, Star } from "lucide-react-native";
-import { ActivityIndicator, Image, StyleSheet, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
+import FastImage from "@d11/react-native-fast-image";
 import Animated, {
   Extrapolation,
   interpolate,
@@ -108,7 +109,7 @@ export default function RestaurantScreen() {
               reveals more photograph, never the pale screen behind it. */}
           <Animated.View style={[styles.heroBleed, heroStyle]}>
             <HeroEntrance>
-            <Image source={toSource(firstMedia(r.images) ?? cityPhoto(r.city))} style={StyleSheet.absoluteFill as never} resizeMode="cover" />
+            <FastImage source={toSource(firstMedia(r.images) ?? cityPhoto(r.city))} style={StyleSheet.absoluteFill as never} resizeMode="cover" />
             </HeroEntrance>
           </Animated.View>
           <GradientFill colors={["rgba(10,37,64,0.45)", "rgba(10,37,64,0)", "rgba(10,37,64,0.55)"]} locations={[0, 0.45, 1]} />
@@ -219,7 +220,7 @@ function MenuRow({ item, restaurant }: { item: MenuItem; restaurant: Restaurant 
       accessibilityState={{ disabled: soldOut }}
     >
       {firstMedia(item.images) ? (
-        <Image source={toSource(firstMedia(item.images))} style={styles.thumb} resizeMode="cover" />
+        <FastImage source={toSource(firstMedia(item.images))} style={styles.thumb} resizeMode="cover" />
       ) : null}
 
       <View style={{ flex: 1, gap: space[1] }}>

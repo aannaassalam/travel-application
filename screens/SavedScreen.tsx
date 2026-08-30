@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Star } from "lucide-react-native";
 import { useRef } from "react";
-import { FlatList, Image, RefreshControl, StyleSheet, View } from "react-native";
+import { Image, RefreshControl, StyleSheet, View } from "react-native";
+import FastImage from "@d11/react-native-fast-image";
 import Animated, { useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ListingMeta } from "@/components/ListingMeta";
@@ -80,6 +81,13 @@ export default function SavedScreen() {
         onScroll={onScroll}
         scrollEventThrottle={16}
         data={items}
+        // List hygiene for mid-range Android: clip offscreen rows at the
+        // native level, keep ~2 screens either side instead of ~10, and paint
+        // fewer rows before first frame.
+        removeClippedSubviews
+        windowSize={5}
+        maxToRenderPerBatch={8}
+        initialNumToRender={6}
         keyExtractor={(it) => (it.kind === "hotel" ? it.hotel.slug : it.listing.slug)}
         refreshControl={
           slugs.length ? (
@@ -122,7 +130,7 @@ export default function SavedScreen() {
               >
                 <Surface style={styles.card}>
                   {img ? (
-                    <Image source={toSource(img)} style={styles.thumb} resizeMode="cover" />
+                    <FastImage source={toSource(img)} style={styles.thumb} resizeMode="cover" />
                   ) : (
                     <View style={styles.thumb} />
                   )}

@@ -33,6 +33,10 @@ local.properties
 .cxx/
 *.keystore
 !debug.keystore
+# Tracked deliberately: the release key and its password travel with the repo so
+# any machine can cut a signed build. Anyone with repo access can therefore sign
+# as Flexi Agency — keep the remote private.
+!FlexiAgency.keystore
 .kotlin/
 
 # node.js

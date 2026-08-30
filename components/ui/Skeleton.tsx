@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { StyleSheet, View, type ViewStyle } from "react-native";
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -26,6 +27,9 @@ export function Skeleton({ style }: { style?: ViewStyle | ViewStyle[] }) {
       -1,
       true
     );
+    // Skeletons unmount when data lands, but an unmounted repeat still ticks
+    // on the UI thread until told otherwise.
+    return () => cancelAnimation(pulse);
   }, [pulse]);
 
   const animated = useAnimatedStyle(() => ({ opacity: pulse.value }));

@@ -1,6 +1,7 @@
 import { useIsFocused } from "@react-navigation/native";
 import { useEffect } from "react";
-import { AccessibilityInfo, type ViewStyle } from "react-native";
+import { type ViewStyle } from "react-native";
+import { isReduceMotion } from "@/lib/reduceMotion";
 import { useSplashRevealed } from "@/lib/splashState";
 import Animated, {
   Easing,
@@ -12,22 +13,28 @@ import Animated, {
 
 const EXPO_OUT = Easing.bezier(0.16, 1, 0.3, 1);
 
+/** Rows past this stop queueing behind the ones before them. Inside a
+ *  virtualised list `index` is the absolute data index, so row 30 mounting
+ *  mid-scroll would otherwise sit invisible for a second and a half first. */
+const MAX_STAGGER = 6;
+
 /**
  * A staggered entrance, from an already-visible default.
  *
  * The rise is small — 14pt — because a list of ten cards each travelling 40pt
- * reads as a slot machine, not an arrival. `index` staggers by 55ms, which is
- * enough to feel sequenced and short enough that the tenth card is not still
- * animating when a thumb reaches it.
+ * reads as a slot machine, not an arrival. `index` staggers by 55ms, capped at
+ * MAX_STAGGER steps so lazily-mounted list rows appear promptly.
  *
- * The entrance replays every time the screen regains focus — coming back to
- * a tab or popping a stack screen greets you with the same arrival as the
- * first visit, not a page frozen mid-thought. While the screen is blurred the
- * content quietly resets to its hidden pose, which no one sees because the
- * screen itself is covered or mid-transition.
+ * It plays once and stays played. Re-arming to the hidden pose on blur assumed
+ * a blurred screen is an unseen one, and it is not: native-stack keeps the
+ * screen beneath a push mounted, so a back-swipe drags a blank page into view
+ * for the whole gesture and only fills it in once focus lands.
  *
  * Under Reduce Motion it renders plainly: no fade, no travel, no delay. A
- * crossfade would still be motion, and the setting asks for none.
+ * crossfade would still be motion, and the setting asks for none. The flag
+ * comes from the cached store — sixty of these mount on Explore at once, and
+ * each asking the native side itself was a burst of async traffic timed
+ * exactly against the first frame.
  */
 export function Reveal({
   children,
@@ -48,27 +55,15 @@ export function Reveal({
   const revealed = useSplashRevealed();
 
   useEffect(() => {
-    if (!focused || !revealed) {
-      // Rearm while hidden, so the next focus starts from the same quiet
-      // place as a first mount.
-      progress.value = 0;
+    if (!focused || !revealed) return;
+    if (isReduceMotion()) {
+      progress.value = 1;
       return;
     }
-    let cancelled = false;
-    AccessibilityInfo.isReduceMotionEnabled().then((reduced) => {
-      if (cancelled) return;
-      if (reduced) {
-        progress.value = 1;
-        return;
-      }
-      progress.value = withDelay(
-        delay + index * 55,
-        withTiming(1, { duration, easing: EXPO_OUT })
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
+    progress.value = withDelay(
+      delay + Math.min(index, MAX_STAGGER) * 55,
+      withTiming(1, { duration, easing: EXPO_OUT })
+    );
   }, [progress, index, delay, duration, focused, revealed]);
 
   const animated = useAnimatedStyle(() => ({

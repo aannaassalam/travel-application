@@ -1,6 +1,7 @@
 import { Minus, Phone, Plus, Star } from "lucide-react-native";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
-import { Image, Linking, StyleSheet, View } from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
+import FastImage from "@d11/react-native-fast-image";
 import { Calendar } from "@/components/ui/Calendar";
 import { ListingMeta } from "@/components/ListingMeta";
 import { SaveButton } from "@/components/ui/SaveButton";
@@ -101,7 +102,7 @@ export const ListingSheet = forwardRef<ListingSheetHandle, { phone?: string }>(
     return (
       <Sheet ref={sheet} scrollable snapPoints={["62%", "88%"]}>
         <View style={{ gap: space[3] }}>
-          {img ? <Image source={toSource(img)} style={styles.image} resizeMode="cover" /> : null}
+          {img ? <FastImage source={toSource(img)} style={styles.image} resizeMode="cover" /> : null}
           <View style={styles.chipRow}>
             <View style={[styles.chip, { backgroundColor: `${verticalColor[vertical]}1A` }]}>
               <Text variant="2xs" weight="bold" style={{ color: verticalColor[vertical] }}>

@@ -1,3 +1,4 @@
+import { haptic } from "@/lib/haptics";
 import { X } from "lucide-react-native";
 import { useRef, useState } from "react";
 import {
@@ -62,6 +63,7 @@ export default function LoginScreen() {
     try {
       await fn();
     } catch (e: unknown) {
+      haptic.error();
       setError(e instanceof ApiError ? e.message : t("common.error"));
     } finally {
       setBusy(false);
@@ -76,6 +78,7 @@ export default function LoginScreen() {
     });
 
   const finish = async (res: Awaited<ReturnType<typeof verifyOtp>>) => {
+    haptic.success();
     await signIn(res.token, {
       firstName: res.customer.firstName,
       lastName: res.customer.lastName,

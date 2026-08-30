@@ -15,7 +15,6 @@ import {
 } from "lucide-react-native";
 import { useEffect, useRef } from "react";
 import {
-  AccessibilityInfo,
   Image,
   ImageBackground,
   Linking,
@@ -24,7 +23,9 @@ import {
   StyleSheet,
   View
 } from "react-native";
+import FastImage from "@d11/react-native-fast-image";
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -47,6 +48,7 @@ import { Surface } from "@/components/ui/Surface";
 import { Text } from "@/components/ui/Text";
 import { getHomeFeed, getHotel, getRestaurant, getSiteContact, searchListings, searchRestaurants } from "@/lib/api";
 import { firstMedia, toSource } from "@/lib/media";
+import { isReduceMotion } from "@/lib/reduceMotion";
 import { price } from "@/lib/money";
 import { CITY_LIST, cityPhoto } from "@/lib/photos";
 import { usePrefs } from "@/lib/prefs";
@@ -65,38 +67,43 @@ import type { Listing, Restaurant, Vertical } from "@/types/domain";
 
 const SECTIONS: { vertical: Vertical; key: string; Icon: typeof Plane }[] = [
   { vertical: "HOTEL", key: "nav.hotels", Icon: HotelIcon },
-  { vertical: "RESTAURANT", key: "nav.restaurants", Icon: UtensilsCrossed },
   { vertical: "FLIGHT", key: "nav.flights", Icon: Plane },
   { vertical: "BUS", key: "nav.bus", Icon: Bus },
   { vertical: "CAR", key: "nav.cars", Icon: Car },
+  { vertical: "RESTAURANT", key: "nav.restaurants", Icon: UtensilsCrossed },
   { vertical: "PROPERTY", key: "nav.property", Icon: Building2 },
   { vertical: "ACTIVITY", key: "nav.activities", Icon: Compass }
 ];
 
-/** The standalone rails, in the site's nav order. Hotels and properties come
- *  from the home feed; these four are their own small searches. */
+/** The standalone rails. Hotels and properties come from the home feed;
+ *  these four are their own small searches. The first three render right
+ *  after hotels, activities close the page — the client's listing order. */
 const RAIL_VERTICALS: Vertical[] = ["FLIGHT", "BUS", "CAR", "ACTIVITY"];
+const TRANSPORT_RAILS = [0, 1, 2];
+const ACTIVITY_RAIL = 3;
 
 const CARD_W = 150;
 const CARD_H = 200;
 
-/** Slow decorative float; never on a tappable container. Reduce Motion holds it. */
+/** Slow decorative float; never on a tappable container. Reduce Motion holds
+ *  it, and so does losing focus — the tab navigator keeps this screen mounted
+ *  behind the others, and an infinite repeat that nobody can see still keeps
+ *  the render thread from ever idling. */
 function Float({ children, style }: { children: React.ReactNode; style?: object }) {
   const drift = useSharedValue(0);
+  const focused = useIsFocused();
   useEffect(() => {
-    let cancelled = false;
-    AccessibilityInfo.isReduceMotionEnabled().then((reduced) => {
-      if (cancelled || reduced) return;
-      drift.value = withRepeat(
-        withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
-        -1,
-        true
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [drift]);
+    if (!focused || isReduceMotion()) {
+      cancelAnimation(drift);
+      return;
+    }
+    drift.value = withRepeat(
+      withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true
+    );
+    return () => cancelAnimation(drift);
+  }, [drift, focused]);
   const animated = useAnimatedStyle(() => ({
     transform: [{ translateY: drift.value * -8 }, { rotate: `${drift.value * 1.5 - 0.75}deg` }]
   }));
@@ -135,6 +142,48 @@ export default function ExploreScreen() {
       return;
     }
     navigation.navigate("Results", { vertical, destination });
+  };
+
+  // One rail, by its index in RAIL_VERTICALS. A function rather than a map
+  // because the listing order splits these apart: transport sits under hotels
+  // and activities close the page, with restaurants and property between.
+  const listingRail = (vi: number) => {
+    const vertical = RAIL_VERTICALS[vi];
+    const q = rails[vi];
+    const items = q.data?.items ?? [];
+    if (!q.isPending && !items.length) return null;
+    const section = SECTIONS.find((s) => s.vertical === vertical)!;
+    return (
+      <View key={vertical}>
+        <SectionHead
+          title={t(section.key)}
+          onSeeAll={() => go(vertical)}
+          seeAll={t("home.seeAll")}
+        />
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.railBleed}
+          contentContainerStyle={styles.rail}
+          snapToInterval={250 + space[3]}
+          decelerationRate="fast"
+        >
+          {q.isPending
+            ? [0, 1].map((i) => <CardSkeleton key={i} />)
+            : items.map((l, i) => (
+                <Reveal key={l.id} index={i} delay={80}>
+                  <DealCard
+                    listing={l}
+                    title={lz(l.title)}
+                    priceText={price(l.sellPrice, currency, locale)}
+                    suffix={vertical === "CAR" ? t("listing.perDay") : t("listing.perPerson")}
+                    onPress={() => listingSheet.current?.open(l)}
+                  />
+                </Reveal>
+              ))}
+        </ScrollView>
+      </View>
+    );
   };
 
   // Warm the detail cache the moment a finger lands, so the screen that
@@ -251,6 +300,7 @@ export default function ExploreScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={styles.railBleed}
           contentContainerStyle={styles.rail}
           snapToInterval={CARD_W + space[3]}
           decelerationRate="fast"
@@ -281,6 +331,7 @@ export default function ExploreScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={styles.railBleed}
           contentContainerStyle={styles.rail}
           snapToInterval={256 + space[3]}
           decelerationRate="fast"
@@ -296,7 +347,7 @@ export default function ExploreScreen() {
                     accessibilityLabel={lz(h.name)}
                   >
                     <Surface style={styles.foodCard}>
-                      <Image
+                      <FastImage
                         source={toSource(firstMedia(h.images) ?? cityPhoto(h.city))}
                         style={styles.foodImage}
                         resizeMode="cover"
@@ -328,11 +379,15 @@ export default function ExploreScreen() {
               ))}
         </ScrollView>
 
+        {/* ---- flights, bus, car rental — right after hotels ----------------- */}
+        {TRANSPORT_RAILS.map(listingRail)}
+
         {/* ---- restaurants --------------------------------------------------- */}
         <SectionHead title={t("nav.restaurants")} onSeeAll={() => go("RESTAURANT")} seeAll={t("home.seeAll")} />
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={styles.railBleed}
           contentContainerStyle={styles.rail}
           snapToInterval={256 + space[3]}
           decelerationRate="fast"
@@ -353,48 +408,6 @@ export default function ExploreScreen() {
               ))}
         </ScrollView>
 
-        {/* ---- one rail per remaining vertical ------------------------------- */}
-        {RAIL_VERTICALS.map((vertical, vi) => {
-          const q = rails[vi];
-          const items = q.data?.items ?? [];
-          if (!q.isPending && !items.length) return null;
-          const section = SECTIONS.find((s) => s.vertical === vertical)!;
-          return (
-            <View key={vertical}>
-              <SectionHead
-                title={t(section.key)}
-                onSeeAll={() => go(vertical)}
-                seeAll={t("home.seeAll")}
-              />
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.rail}
-                snapToInterval={250 + space[3]}
-                decelerationRate="fast"
-              >
-                {q.isPending
-                  ? [0, 1].map((i) => <CardSkeleton key={i} />)
-                  : items.map((l, i) => (
-                      <Reveal key={l.id} index={i} delay={80}>
-                        <DealCard
-                          listing={l}
-                          title={lz(l.title)}
-                          priceText={price(l.sellPrice, currency, locale)}
-                          suffix={
-                            vertical === "CAR"
-                              ? t("listing.perDay")
-                              : t("listing.perPerson")
-                          }
-                          onPress={() => listingSheet.current?.open(l)}
-                        />
-                      </Reveal>
-                    ))}
-              </ScrollView>
-            </View>
-          );
-        })}
-
         {/* ---- properties ---------------------------------------------------- */}
         {feed.data?.properties?.length ? (
           <>
@@ -406,7 +419,8 @@ export default function ExploreScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.rail}
+              style={styles.railBleed}
+          contentContainerStyle={styles.rail}
               snapToInterval={250 + space[3]}
               decelerationRate="fast"
             >
@@ -423,6 +437,9 @@ export default function ExploreScreen() {
             </ScrollView>
           </>
         ) : null}
+
+        {/* ---- activities & tours close the page ----------------------------- */}
+        {listingRail(ACTIVITY_RAIL)}
 
         {/* ---- a person, reachable ------------------------------------------- */}
         <Reveal index={2}>
@@ -562,7 +579,7 @@ function DealCard({
     <Pressable onPress={onPress} scaleTo={0.97} accessibilityLabel={title}>
       <Surface style={styles.dealCard}>
         {img ? (
-          <Image source={toSource(img)} style={styles.dealImage} resizeMode="cover" />
+          <FastImage source={toSource(img)} style={styles.dealImage} resizeMode="cover" />
         ) : (
           <View style={[styles.dealImage, { backgroundColor: `${verticalColor[l.vertical]}14` }]} />
         )}
@@ -608,7 +625,7 @@ function FoodCard({
     <Pressable onPress={onPress} onPressIn={onPressIn} scaleTo={0.98} accessibilityLabel={name}>
       <Surface style={styles.foodCard}>
         {img ? (
-          <Image source={toSource(img)} style={styles.foodImage} resizeMode="cover" />
+          <FastImage source={toSource(img)} style={styles.foodImage} resizeMode="cover" />
         ) : (
           <View style={[styles.foodImage, styles.foodImageFallback]}>
             <UtensilsCrossed size={22} color={verticalColor.RESTAURANT} strokeWidth={2} />
@@ -707,7 +724,11 @@ const styles = StyleSheet.create({
     marginBottom: space[4]
   },
   seeAll: { minHeight: 44, justifyContent: "center", paddingLeft: space[4] },
-  rail: { gap: space[3], paddingHorizontal: space[5] },
+  // Vertical padding gives the cards' shadows room inside the scroll clip;
+  // the negative margin hands the same 8pt back, so section rhythm is
+  // untouched and only the paint area grows.
+  rail: { gap: space[3], paddingHorizontal: space[5], paddingVertical: 8 },
+  railBleed: { marginVertical: -8 },
   cityCard: {
     width: CARD_W,
     height: CARD_H,

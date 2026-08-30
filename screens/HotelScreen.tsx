@@ -3,7 +3,8 @@ import { GradientFill } from "@/components/ui/Gradient";
 import { useRoute, type RouteProp } from "@react-navigation/native";
 import type { RootStackParamList } from "@/navigation/types";
 import { BedDouble, CalendarDays, ChevronDown, MapPin, Star, Users } from "lucide-react-native";
-import { ActivityIndicator, Image, StyleSheet, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
+import FastImage from "@d11/react-native-fast-image";
 import { useRef, useState } from "react";
 import Animated, {
   Extrapolation,
@@ -103,7 +104,7 @@ export default function HotelScreen() {
               reveals more photograph, never the pale screen behind it. */}
           <Animated.View style={[styles.heroBleed, heroStyle]}>
             <HeroEntrance>
-            <Image source={toSource(firstMedia(h.images) ?? cityPhoto(h.city))} style={StyleSheet.absoluteFill as never} resizeMode="cover" />
+            <FastImage source={toSource(firstMedia(h.images) ?? cityPhoto(h.city))} style={StyleSheet.absoluteFill as never} resizeMode="cover" />
             </HeroEntrance>
           </Animated.View>
           <GradientFill colors={["rgba(10,37,64,0.4)", "rgba(10,37,64,0)", "rgba(10,37,64,0.5)"]} locations={[0, 0.45, 1]} />
@@ -261,7 +262,7 @@ function RoomCard({
   const soldOut = nights > 0 && typeof rt.available === "number" && rt.available <= 0;
   return (
     <Surface style={styles.room}>
-      {img ? <Image source={toSource(img)} style={styles.roomImage} resizeMode="cover" /> : null}
+      {img ? <FastImage source={toSource(img)} style={styles.roomImage} resizeMode="cover" /> : null}
       <View style={styles.roomBody}>
         <Text variant="base" weight="bold" tone="brand900" numberOfLines={1}>
           {lz(rt.name)}

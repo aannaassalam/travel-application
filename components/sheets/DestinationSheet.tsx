@@ -41,7 +41,6 @@ export function DestinationSheet({
         placeholder={t("home.search")}
         placeholderTextColor={color.ink300}
         style={styles.input}
-        autoFocus
         returnKeyType="search"
         onSubmitEditing={() => query.trim() && onPick(query.trim())}
       />

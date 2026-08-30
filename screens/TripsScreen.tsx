@@ -136,6 +136,13 @@ export default function TripsScreen() {
       style={styles.screen}
       data={customer ? items : []}
       keyExtractor={(o) => o.reference}
+      // List hygiene for mid-range Android: clip offscreen rows at the
+      // native level, keep ~2 screens either side instead of ~10, and paint
+      // fewer rows before first frame.
+      removeClippedSubviews
+      windowSize={5}
+      maxToRenderPerBatch={8}
+      initialNumToRender={6}
       // The one list whose truth changes without the customer doing anything:
       // the office confirms, payment lands. Pulling is how they check.
       refreshControl={

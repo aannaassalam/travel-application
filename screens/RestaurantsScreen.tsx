@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useRoute, type RouteProp } from "@react-navigation/native";
 import { useAppNavigation, type TabParamList } from "@/navigation/types";
 import { Bike, Clock, Star, UtensilsCrossed } from "lucide-react-native";
-import { FlatList, Image, RefreshControl, StyleSheet, View } from "react-native";
+import { FlatList, RefreshControl, StyleSheet, View } from "react-native";
+import FastImage from "@d11/react-native-fast-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRefresh } from "@/lib/useRefresh";
 import { Reveal } from "@/components/motion/Reveal";
@@ -11,6 +12,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Surface } from "@/components/ui/Surface";
 import { Text } from "@/components/ui/Text";
 import { CartBar } from "@/components/CartBar";
+import { useCart } from "@/lib/cart";
 import { TAB_BAR_CLEARANCE } from "@/components/TabBar";
 import { searchRestaurants } from "@/lib/api";
 import { firstMedia, toSource } from "@/lib/media";
@@ -34,15 +36,26 @@ export default function RestaurantsScreen() {
   const { refreshing, onRefresh } = useRefresh(refetch);
 
   const items = data?.items ?? [];
+  // With items in the basket the cart bar floats above the tab bar and eats
+  // another ~76pt of the viewport; the list pads past it or the last
+  // restaurant hides behind the basket forever.
+  const { count } = useCart();
 
   return (
     <View style={styles.screen}>
       <FlatList
         data={items}
         keyExtractor={(r) => r.id}
+        // List hygiene for mid-range Android: clip offscreen rows at the
+        // native level, keep ~2 screens either side instead of ~10, and paint
+        // fewer rows before first frame.
+        removeClippedSubviews
+        windowSize={5}
+        maxToRenderPerBatch={8}
+        initialNumToRender={6}
         contentContainerStyle={[
           styles.list,
-          { paddingTop: insets.top + space[4], paddingBottom: space[24] }
+          { paddingTop: insets.top + space[4], paddingBottom: space[24] + (count > 0 ? 76 : 0) }
         ]}
         showsVerticalScrollIndicator={false}
         // Pull to refresh: a menu can be 86'd while the customer is looking at
@@ -131,7 +144,7 @@ function RestaurantCard({
   return (
     <Pressable onPress={onPress} scaleTo={0.985} accessibilityLabel={name}>
       <Surface style={styles.card}>
-        <Image
+        <FastImage
           // The venue's own photo when it has one; the city's photograph as
           // honest ambience while the catalogue images are placeholders.
           source={toSource(firstMedia(r.images) ?? cityPhoto(r.city))}

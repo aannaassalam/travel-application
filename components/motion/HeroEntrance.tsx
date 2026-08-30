@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { AccessibilityInfo, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
+import { isReduceMotion } from "@/lib/reduceMotion";
 import Animated, {
   Easing,
   interpolate,
@@ -26,18 +27,11 @@ export function HeroEntrance({ children }: { children: React.ReactNode }) {
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    let cancelled = false;
-    AccessibilityInfo.isReduceMotionEnabled().then((reduced) => {
-      if (cancelled) return;
-      if (reduced) {
-        progress.value = 1;
-        return;
-      }
-      progress.value = withTiming(1, { duration: 620, easing: EXPO_OUT });
-    });
-    return () => {
-      cancelled = true;
-    };
+    if (isReduceMotion()) {
+      progress.value = 1;
+      return;
+    }
+    progress.value = withTiming(1, { duration: 620, easing: EXPO_OUT });
   }, [progress]);
 
   const style = useAnimatedStyle(() => ({
