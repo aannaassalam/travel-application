@@ -27,3 +27,31 @@ export function useSplashRevealed(): boolean {
     () => revealed
   );
 }
+
+/**
+ * Whether the splash has fully left the screen.
+ *
+ * Data-heavy content gates on THIS, not on the reveal: queries resolve
+ * mid-splash, and mounting thirty cards plus decoding their photographs while
+ * the cab is mid-drive is a Fabric commit storm landing on the animation's
+ * thread — measured on-device as the drive hitching. Skeletons render behind
+ * the splash; the real cards mount once nothing is animating over them.
+ */
+let complete = false;
+const completeListeners = new Set<() => void>();
+
+export function markSplashComplete() {
+  if (complete) return;
+  complete = true;
+  completeListeners.forEach((l) => l());
+}
+
+export function useSplashComplete(): boolean {
+  return useSyncExternalStore(
+    useCallback((cb) => {
+      completeListeners.add(cb);
+      return () => completeListeners.delete(cb);
+    }, []),
+    () => complete
+  );
+}

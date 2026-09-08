@@ -13,7 +13,7 @@ import {
   Star,
   UtensilsCrossed
 } from "lucide-react-native";
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import {
   Image,
   ImageBackground,
@@ -49,6 +49,7 @@ import { Text } from "@/components/ui/Text";
 import { getHomeFeed, getHotel, getRestaurant, getSiteContact, searchListings, searchRestaurants } from "@/lib/api";
 import { firstMedia, toSource } from "@/lib/media";
 import { isReduceMotion } from "@/lib/reduceMotion";
+import { useSplashComplete } from "@/lib/splashState";
 import { price } from "@/lib/money";
 import { CITY_LIST, cityPhoto } from "@/lib/photos";
 import { usePrefs } from "@/lib/prefs";
@@ -132,6 +133,11 @@ export default function ExploreScreen() {
     }))
   });
   const contact = useQuery({ queryKey: ["site-contact"], queryFn: getSiteContact });
+  // Cards wait for the splash to leave: queries resolve mid-drive, and
+  // mounting thirty cards plus decoding their photos under a running
+  // animation was measured on-device as the cab hitching. Skeletons are
+  // cheap; the real content lands the frame after nothing animates above it.
+  const settled = useSplashComplete();
 
   const go = (vertical: Vertical, destination?: string) => {
     if (vertical === "RESTAURANT") {
@@ -168,7 +174,7 @@ export default function ExploreScreen() {
           snapToInterval={250 + space[3]}
           decelerationRate="fast"
         >
-          {q.isPending
+          {q.isPending || !settled
             ? [0, 1].map((i) => <CardSkeleton key={i} />)
             : items.map((l, i) => (
                 <Reveal key={l.id} index={i} delay={80}>
@@ -336,7 +342,7 @@ export default function ExploreScreen() {
           snapToInterval={256 + space[3]}
           decelerationRate="fast"
         >
-          {feed.isPending
+          {feed.isPending || !settled
             ? [0, 1].map((i) => <CardSkeleton key={i} />)
             : (feed.data?.hotels ?? []).map((h, i) => (
                 <Reveal key={h.id} index={i} delay={100}>
@@ -392,7 +398,7 @@ export default function ExploreScreen() {
           snapToInterval={256 + space[3]}
           decelerationRate="fast"
         >
-          {restaurants.isPending
+          {restaurants.isPending || !settled
             ? [0, 1].map((i) => <CardSkeleton key={i} />)
             : (restaurants.data?.items ?? []).map((r, i) => (
                 <Reveal key={r.id} index={i} delay={100}>
@@ -409,7 +415,7 @@ export default function ExploreScreen() {
         </ScrollView>
 
         {/* ---- properties ---------------------------------------------------- */}
-        {feed.data?.properties?.length ? (
+        {settled && feed.data?.properties?.length ? (
           <>
             <SectionHead
               title={t("nav.property")}
@@ -561,6 +567,7 @@ function CardSkeleton() {
 }
 
 /** A rail card carrying the same facts as the website's rows, compactly. */
+const DealCard = memo(
 function DealCard({
   listing: l,
   title,
@@ -599,8 +606,13 @@ function DealCard({
       </Surface>
     </Pressable>
   );
-}
-
+},
+  // Handlers are fresh closures every parent render but only capture
+  // stable refs, so identity changes are noise — comparing everything
+  // else lets a basket tick skip re-rendering rows it does not touch.
+  (a, b) => Object.keys(a).every((k) => ["onPress", "onPressIn"].includes(k) || a[k as keyof typeof a] === b[k as keyof typeof b])
+);
+const FoodCard = memo(
 function FoodCard({
   restaurant: r,
   name,
@@ -650,8 +662,12 @@ function FoodCard({
       </Surface>
     </Pressable>
   );
-}
-
+},
+  // Handlers are fresh closures every parent render but only capture
+  // stable refs, so identity changes are noise — comparing everything
+  // else lets a basket tick skip re-rendering rows it does not touch.
+  (a, b) => Object.keys(a).every((k) => ["onPress", "onPressIn"].includes(k) || a[k as keyof typeof a] === b[k as keyof typeof b])
+);
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.brand800 },
   bottomstop: {

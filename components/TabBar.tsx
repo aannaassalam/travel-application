@@ -127,7 +127,12 @@ function Tab({
     active.value = withTiming(focused ? 1 : 0, { duration: MS, easing: EASE });
   }, [focused, active]);
   useEffect(() => {
-    labelWidth.value = labelW;
+    // Eased, not assigned. The measurement lands a few frames after first
+    // paint (later on Android), and the initially-focused tab has already
+    // drawn: a bare assignment snapped its pill open around a label that had
+    // been sitting clipped inside the 48pt circle. Easing turns the late
+    // measurement into the same glide a tab switch has.
+    labelWidth.value = withTiming(labelW, { duration: 180, easing: EASE });
   }, [labelW, labelWidth]);
 
   const pillStyle = useAnimatedStyle(() => ({
@@ -136,9 +141,11 @@ function Tab({
   }));
 
   // The label rides in from under the icon: fade plus a short slide, fully
-  // clipped by the pill while it travels.
+  // clipped by the pill while it travels. Until the twin has reported a width
+  // the pill is still a circle, so the label stays invisible — text jammed
+  // into a 48pt circle is the "half-clipped label" Android showed on launch.
   const labelStyle = useAnimatedStyle(() => ({
-    opacity: active.value,
+    opacity: labelWidth.value > 1 ? active.value : 0,
     transform: [{ translateX: (1 - active.value) * -10 }]
   }));
 

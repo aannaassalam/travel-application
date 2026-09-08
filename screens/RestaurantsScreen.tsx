@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, type RouteProp } from "@react-navigation/native";
 import { useAppNavigation, type TabParamList } from "@/navigation/types";
@@ -121,6 +122,7 @@ export default function RestaurantsScreen() {
   );
 }
 
+const RestaurantCard = memo(
 function RestaurantCard({
   restaurant: r,
   currency,
@@ -193,8 +195,12 @@ function RestaurantCard({
       </Surface>
     </Pressable>
   );
-}
-
+},
+  // Handlers are fresh closures every parent render but only capture
+  // stable refs, so identity changes are noise — comparing everything
+  // else lets a basket tick skip re-rendering rows it does not touch.
+  (a, b) => Object.keys(a).every((k) => ["onPress", "onPressIn"].includes(k) || a[k as keyof typeof a] === b[k as keyof typeof b])
+);
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.paper },
   list: { paddingHorizontal: space[5], gap: space[4] },

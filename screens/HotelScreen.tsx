@@ -1,9 +1,10 @@
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { GradientFill } from "@/components/ui/Gradient";
 import { useRoute, type RouteProp } from "@react-navigation/native";
 import type { RootStackParamList } from "@/navigation/types";
 import { BedDouble, CalendarDays, ChevronDown, MapPin, Star, Users } from "lucide-react-native";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import FastImage from "@d11/react-native-fast-image";
 import { useRef, useState } from "react";
 import Animated, {
@@ -82,7 +83,16 @@ export default function HotelScreen() {
             {t("common.error")}
           </Text>
         ) : (
-          <ActivityIndicator color={color.brand500} />
+          <View style={styles.skeletonPage}>
+            <Skeleton style={styles.skeletonHero} />
+            <View style={styles.skeletonBody}>
+              <Skeleton style={styles.skeletonTitle} />
+              <Skeleton style={styles.skeletonMeta} />
+              <Skeleton style={styles.skeletonLine} />
+              <Skeleton style={styles.skeletonBlock} />
+              <Skeleton style={styles.skeletonBlock} />
+            </View>
+          </View>
         )}
       </View>
     );
@@ -303,6 +313,15 @@ function RoomCard({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.paper },
   centre: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: color.paper },
+  /** The pending state wears the page's own silhouette — a hero, a title, two
+   *  card blocks — so arriving content replaces shapes instead of appearing. */
+  skeletonPage: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: color.paper },
+  skeletonHero: { height: 300, borderRadius: 0 },
+  skeletonBody: { padding: space[5], gap: space[3] },
+  skeletonTitle: { height: 26, width: "65%" },
+  skeletonMeta: { height: 14, width: "40%" },
+  skeletonLine: { height: 14, width: "90%" },
+  skeletonBlock: { height: 120 },
   heroWrap: { height: HERO_H, backgroundColor: color.ink100 },
   heroBleed: {
     position: "absolute",

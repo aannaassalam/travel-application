@@ -30,7 +30,14 @@ const KEYCHAIN_SERVICE = "com.flexiagency.app.session";
 export class ApiError extends Error {
   constructor(
     message: string,
-    public status: number
+    public status: number,
+    /**
+     * The server's machine-readable reason. Screens switch on this, never on
+     * the message: the message is English prose from the API, and matching it
+     * with a regex — which is what sign-in used to do — silently stops working
+     * the moment the copy is edited or the customer is reading in French.
+     */
+    public code?: string
   ) {
     super(message);
     this.name = "ApiError";
@@ -95,7 +102,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (res.status === 401 && body?.code === "SESSION_INVALID") void setToken(null);
     throw new ApiError(
       res.headers.get("X-Message") ?? body?.message ?? "Something went wrong",
-      res.status
+      res.status,
+      body?.code
     );
   }
   return body as T;
@@ -177,13 +185,41 @@ export interface VerifyResult {
   customer: { firstName: string; lastName: string; phone: string; email?: string };
 }
 
+/**
+ * Sign-up. The ONLY flow that spends an SMS to get in: it proves the number,
+ * creates the account with the password the customer chose, and returns a
+ * session. Every later sign-in goes through `login`.
+ */
 export const verifyOtp = (payload: {
   phone: string;
   code: string;
   firstName?: string;
   lastName?: string;
+  password?: string;
 }) =>
   request<VerifyResult>("/auth/otp/verify", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+
+/** The everyday way in: number + password, no SMS and no waiting for one. */
+export const login = (payload: { phone: string; password: string }) =>
+  request<VerifyResult>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+
+/**
+ * Spends a code from `requestOtp` and sets the new password in the same call.
+ * The server signs them in on success — bouncing someone back to a login form
+ * to retype a password chosen ten seconds ago is a hurdle for nothing.
+ */
+export const resetPassword = (payload: {
+  phone: string;
+  code: string;
+  password: string;
+}) =>
+  request<VerifyResult>("/auth/password/reset", {
     method: "POST",
     body: JSON.stringify(payload)
   });

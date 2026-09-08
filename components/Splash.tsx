@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { AccessibilityInfo, Dimensions, Image, StyleSheet, View } from "react-native";
 import BootSplash from "react-native-bootsplash";
 import Animated, {
@@ -178,8 +178,6 @@ export default function Splash({ onDone }: { onDone: () => void }) {
   const drive = useSharedValue(0);
   const lamps = useSharedValue(0);
   const fade = useSharedValue(0);
-  // Flips as the curtain starts to move; gates the plate's hardware texture.
-  const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
     // First frame is committed by the time this effect runs; hiding the native
@@ -233,14 +231,10 @@ export default function Splash({ onDone }: { onDone: () => void }) {
       // Lights on, after the lockup has settled and once the cab's nose is
       // already in frame — it noses in dark, then switches on.
       lamps.value = withDelay(LAMPS_AT, withTiming(1, { duration: LAMPS_MS }));
-      // The reveal storm fires behind the opaque plate (see REVEAL_AT), and
-      // the plate is promoted to a hardware texture at the same moment — its
-      // own content is done animating by then, and both costs land while the
-      // stall is invisible instead of mid-drive.
-      timer = setTimeout(() => {
-        setExiting(true);
-        markSplashRevealed();
-      }, REVEAL_AT);
+      // The reveal storm fires behind the opaque plate (see REVEAL_AT), so
+      // its commit cost lands while the stall is invisible instead of
+      // mid-drive.
+      timer = setTimeout(markSplashRevealed, REVEAL_AT);
     });
 
     return () => {
@@ -312,17 +306,13 @@ export default function Splash({ onDone }: { onDone: () => void }) {
     // The outer layer carries no colour of its own — it is only a stacking
     // context. The navy belongs to the curtain, which has to be able to leave.
     <View style={[StyleSheet.absoluteFill, styles.root]} pointerEvents="none">
-      {/* Hardware texture, but only ONCE the exit starts. The plate is a full
-          screen of SVG; without a texture Android re-draws all of it on every
-          frame of the exit slide, which is where the drive stuttered. Enabling
-          it earlier backfires — the road and wordmark animate inside the plate
-          for the first second, and each frame would re-upload a full-screen
-          texture instead. By REVEAL_AT the content is static and the exit is
-          a pure translate of one cached layer. */}
-      <Animated.View
-        renderToHardwareTextureAndroid={exiting}
-        style={[StyleSheet.absoluteFill, styles.plate, plateStyle]}
-      >
+      {/* NO hardware-texture toggling here. Promoting the plate to a texture
+          when the exit began was tried: committing a native prop on the view
+          an animation is actively driving raced the UI runtime, and losing
+          the race wedged EVERY animation in the app — seen as sections that
+          entered and then never finished, and a splash that never handed off.
+          The exit redraw is affordable; a dead animation runtime is not. */}
+      <Animated.View style={[StyleSheet.absoluteFill, styles.plate, plateStyle]}>
         {/* Ground vignette, arriving with the glow — one light source, not two
           competing fades. The base stays the launch screen's exact navy. */}
         <Animated.View style={[StyleSheet.absoluteFill, vignetteStyle]}>

@@ -1,3 +1,4 @@
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { useAppNavigation } from "@/navigation/types";
 import {
@@ -193,7 +194,15 @@ export default function TripsScreen() {
               />
             ) : null}
           </View>
-        ) : null
+        ) : (
+          // Still fetching: order-card silhouettes, so the list area reads as
+          // "loading" rather than "you have no bookings".
+          <View style={{ gap: space[3] }}>
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} style={styles.cardSkeleton} />
+            ))}
+          </View>
+        )
       }
     />
   );
@@ -222,6 +231,7 @@ const styles = StyleSheet.create({
   badges: { flexDirection: "row", flexWrap: "wrap", gap: space[1.5] },
   badge: { borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: space[1] },
   emptyArt: { width: 170, height: 170 },
+  cardSkeleton: { height: 112 },
   empty: {
     alignItems: "center",
     paddingVertical: space[12],

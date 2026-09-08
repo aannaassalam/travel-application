@@ -7,6 +7,7 @@ import { StatusBar, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Splash from "@/components/Splash";
+import { markSplashComplete } from "@/lib/splashState";
 import { TabBar } from "@/components/TabBar";
 import { getHomeFeed, getSiteContact, searchListings, searchRestaurants } from "@/lib/api";
 import { CartProvider } from "@/lib/cart";
@@ -122,7 +123,10 @@ const linking: LinkingOptions<RootStackParamList> = {
 
 export default function App() {
   const [splashDone, setSplashDone] = useState(false);
-  const onSplashDone = useCallback(() => setSplashDone(true), []);
+  const onSplashDone = useCallback(() => {
+    setSplashDone(true);
+    markSplashComplete();
+  }, []);
 
   return (
     <GestureHandlerRootView style={styles.root}>

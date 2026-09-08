@@ -6,5 +6,12 @@ module.exports = {
     // Reanimated 4 rewrites worklets through this plugin, and it must stay
     // last — anything after it sees code the plugin has already transformed.
     "react-native-worklets/plugin"
-  ]
+  ],
+  env: {
+    production: {
+      // Hermes still pays for every console call; release keeps errors so
+      // crash reporting has something to say.
+      plugins: [["transform-remove-console", { exclude: ["error"] }]]
+    }
+  }
 };

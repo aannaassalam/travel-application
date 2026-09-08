@@ -60,10 +60,19 @@ export function Reveal({
       progress.value = 1;
       return;
     }
-    progress.value = withDelay(
-      delay + Math.min(index, MAX_STAGGER) * 55,
-      withTiming(1, { duration, easing: EXPO_OUT })
-    );
+    const stagger = delay + Math.min(index, MAX_STAGGER) * 55;
+    progress.value = withDelay(stagger, withTiming(1, { duration, easing: EXPO_OUT }));
+    // Deadman's switch. On some devices an entrance can be lost — seen in the
+    // wild as a section flashing in and then sitting invisible, likely a
+    // remount or animation-attach race under startup load. The cause is timing
+    // we cannot reproduce at will, so the guarantee lives here instead: past
+    // the moment the entrance MUST have finished, drive the value to 1 again.
+    // Re-animating an already-settled value is an invisible no-op; rescuing a
+    // lost one is a quick late fade rather than permanently hidden content.
+    const deadman = setTimeout(() => {
+      progress.value = withTiming(1, { duration: 150 });
+    }, stagger + duration + 350);
+    return () => clearTimeout(deadman);
   }, [progress, index, delay, duration, focused, revealed]);
 
   const animated = useAnimatedStyle(() => ({
